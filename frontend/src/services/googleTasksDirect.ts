@@ -709,21 +709,7 @@ class GoogleTasksDirectService {
         subtasks: [
           { id: 'mock-sub-1', title: 'Diagramas de flujo multi-dispositivo', status: 'completed' },
           { id: 'mock-sub-2', title: 'Métricas de rendimiento e impacto Zero-DB', status: 'needsAction' },
-          { id: 'mock-sub-3', title: 'Demo interactiva para reclutadores', status: 'needsAction' },
         ],
-      },
-      {
-        id: 'mock-keep-1',
-        userId: 'demo',
-        source: 'google_keep',
-        sourceId: 'mock-keep-1',
-        sourceListName: 'Checklist Keep',
-        title: 'Ideas para optimización de UI y micro-animaciones',
-        description: 'Contrastes sutiles, feedback háptico y transiciones con resorte.',
-        status: 'todo',
-        position: 3000,
-        dueDate: null,
-        lastSyncedAt: today.toISOString(),
       },
     ]);
 

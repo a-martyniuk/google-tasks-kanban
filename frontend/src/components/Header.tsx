@@ -44,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
               MI KANBAN
             </h1>
             <p className="text-xs text-slate-500 font-medium hidden sm:block">
-              Google Tasks & Google Keep Sync Layer
+              Google Tasks Sync Layer (Zero-DB)
             </p>
           </div>
         </div>
@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 hover:border-slate-400 active:scale-95'
             }`}
-            title="Sincronizar tareas con Google Tasks y Keep"
+            title="Sincronizar tareas con Google Tasks"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600' : 'text-slate-600'}`}

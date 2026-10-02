@@ -1,15 +1,15 @@
 # Arquitectura y Decisiones Técnicas: Kanban Tasks Board
 
-Este documento describe la arquitectura técnica, modelo de datos, evaluación formal de APIs de Google (Tasks y Keep), mecanismo de sincronización idempotente y estrategia de despliegue para la aplicación web **Kanban Tasks Board**.
+Este documento describe la arquitectura técnica, modelo de datos, evaluación formal de la API de Google Tasks, mecanismo de sincronización idempotente y estrategia de despliegue para la aplicación web **Kanban Tasks Board**.
 
 ---
 
 ## 1. Principio Fundamental del Sistema
 
-> **La fuente externa (Google Tasks / Google Keep) es la única autoridad sobre la existencia, título, notas y fecha de un ítem.**
+> **La fuente externa (Google Tasks) es la única autoridad sobre la existencia, título, notas y fecha de un ítem.**
 > **El Kanban es la autoridad exclusiva sobre el flujo visual de trabajo (columna actual, orden relativo e historial de transiciones).**
 
-Cualquier elemento en el Kanban existe si y solo si existe en la fuente original. Si un elemento es borrado en Google Tasks o Keep, desaparece inmediatamente del Kanban en la siguiente sincronización, sin importar si estaba en *Para hacer*, *En progreso*, *En revisión* o *Terminado*.
+Cualquier elemento en el Kanban existe si y solo si existe en la fuente original. Si un elemento es borrado en Google Tasks, desaparece inmediatamente del Kanban en la siguiente sincronización, sin importar si estaba en *Para hacer*, *En progreso*, *En revisión* o *Terminado*.
 
 ---
 
@@ -32,23 +32,16 @@ Antes de implementar cualquier integración, se realizó un análisis exhaustivo
   * `tasks.patch`: Permite marcar una tarea como completada (`status: "completed"`) en Google Tasks cuando el usuario lo configure en el Kanban al moverla a *Terminado*.
 * **Veredicto Técnico**: 100% compatible con todos los requisitos del Kanban.
 
-### 2.2 Google Keep API v1 (`keep.googleapis.com`) — Realidad Técnica y Limitaciones
-* **Restricción Fundamental de Google**:
+### 2.2 Descarte Técnico Fundamentado de Google Keep
+* **Evaluación Inicial:** Se analizó la integración con Google Keep API v1 (`keep.googleapis.com`).
+* **Restricción Fundamental de Google:**
   A diferencia de Google Tasks, Drive o Calendar, **la API oficial de Google Keep NO está habilitada para cuentas de usuario estándar (`@gmail.com`)**.
-* **Tipo de Acceso Restringido**:
-  * Google exige un entorno empresarial **Google Workspace Enterprise**.
+* **Tipo de Acceso Restringido:**
+  * Google exige un entorno corporativo **Google Workspace Enterprise**.
   * La autenticación requiere **Cuentas de Servicio (Service Account) con Delegación de Todo el Dominio (Domain-Wide Delegation)** configuradas por un administrador de Google Workspace.
-  * Si una aplicación web solicita los scopes `https://www.googleapis.com/auth/keep` o `https://www.googleapis.com/auth/keep.readonly` con una cuenta personal `@gmail.com`, la pantalla de consentimiento de Google OAuth falla con:
-    `400 invalid_scope` o `403 Insufficient authentication scopes`.
-* **Propósito Original de la API de Keep**:
-  Google diseñó esta API específicamente para aplicaciones de seguridad y cumplimiento normativo corporativo (CASB/DLP), permitiendo auditar y gestionar notas sensibles dentro de la empresa, no para sincronización bidireccional de tareas personales de consumidores.
-* **Alternativa Técnica Implementada (Sin inventar endpoints ficticios)**:
-  1. **Patrón Adapter Polimórfico (`TaskSourceAdapter`)**: La arquitectura desacopla el origen de los datos a través de una interfaz común.
-  2. **GoogleKeepAdapter**:
-     - Soporta autenticación nativa para dominios Google Workspace si se proveen credenciales de Service Account empresariales.
-     - Para usuarios personales (`@gmail.com`), el sistema detecta el tipo de cuenta y muestra un estado claro y transparente en el panel de configuración:
-       *Informa la restricción oficial de Google e instruye cómo Google Tasks es el gestor de tareas nativo unificado de Google.*
-     - Soporta un **Keep Ingest Bridge / Importador JSON estructurado de notas de Keep** (formato Google Takeout o listas compartidas), asignando `source: 'google_keep'` y el badge visual correspondiente `[Google Keep]` en las tarjetas del Kanban.
+  * Si una aplicación web solicita los scopes `https://www.googleapis.com/auth/keep` o `https://www.googleapis.com/auth/keep.readonly` con una cuenta personal `@gmail.com`, la pantalla de consentimiento de Google OAuth falla con error `400 invalid_scope` o `403 Insufficient authentication scopes`.
+* **Decisión de Ingeniería:**
+  Para garantizar una experiencia 100% fluida, abierta y sin fricciones para cualquier usuario con cuenta de Google (`@gmail.com` y Workspace), **se descartó Google Keep del sistema**, focalizando la arquitectura exclusivamente en **Google Tasks** con sincronización directa cliente-nube (Zero-DB) y soporte de subtareas jerárquicas nativas.
 
 ---
 
@@ -71,14 +64,12 @@ flowchart TD
         
         subgraph Adapters ["Source Adapters"]
             TaskAdapter[GoogleTasksAdapter - v1 REST]
-            KeepAdapter[GoogleKeepAdapter - Workspace/Bridge]
         end
     end
 
     subgraph External ["Servicios Google"]
         GAuth[Google OAuth 2.0 Server]
         GTasksAPI[Google Tasks API]
-        GKeepAPI[Google Keep API / Bridge]
     end
 
     subgraph Storage ["Base de Datos PostgreSQL"]
@@ -103,9 +94,7 @@ flowchart TD
     AuthCtrl --> DB_OAuth
 
     SyncEngine --> TaskAdapter
-    SyncEngine --> KeepAdapter
     TaskAdapter --> GTasksAPI
-    KeepAdapter --> GKeepAPI
 
     SyncEngine --> DB_Items
     SyncEngine --> DB_Sync
@@ -133,7 +122,7 @@ CONSTRAINT uq_user_source_source_id UNIQUE (user_id, source, source_id);
 * **`kanban_items`**:
   * `id`: UUID (Primary Key).
   * `user_id`: UUID (Foreign Key a `users`).
-  * `source`: `google_tasks` | `google_keep`.
+  * `source`: `google_tasks`.
   * `source_id`: Identificador original del elemento en Google.
   * `source_list_id` y `source_list_name`: Lista de origen.
   * `title`: Título original.

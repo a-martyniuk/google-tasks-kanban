@@ -1,7 +1,7 @@
 {
   "name": "kanban-tasks-backend",
   "version": "1.0.0",
-  "description": "Backend API for Kanban Tasks Board synced with Google Tasks and Keep",
+  "description": "Backend API for Kanban Tasks Board synced with Google Tasks",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

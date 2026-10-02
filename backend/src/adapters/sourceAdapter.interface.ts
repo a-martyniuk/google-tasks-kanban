@@ -1,5 +1,5 @@
 export interface NormalizedTask {
-  source: 'google_tasks' | 'google_keep';
+  source: 'google_tasks';
   sourceId: string;
   sourceListId?: string;
   sourceListName?: string;
@@ -18,7 +18,7 @@ export interface TaskListInfo {
 }
 
 export interface TaskSourceAdapter {
-  readonly sourceName: 'google_tasks' | 'google_keep';
+  readonly sourceName: 'google_tasks';
   
   /**
    * Obtiene las tareas activas para las listas seleccionadas

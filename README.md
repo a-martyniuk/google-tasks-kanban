@@ -1,16 +1,16 @@
-# 📋 Kanban Tasks Board (Sincronizado con Google Tasks & Keep)
+# 📋 Kanban Tasks Board (Sincronizado con Google Tasks)
 
-Una aplicación web moderna, rápida y minimalista que actúa como una **capa visual de gestión de flujo de trabajo Kanban** sobre **Google Tasks** y **Google Keep**, sin convertirse en un gestor de tareas aislado e independiente.
+Una aplicación web moderna, rápida y minimalista que actúa como una **capa visual de gestión de flujo de trabajo Kanban** sobre **Google Tasks**, sin convertirse en un gestor de tareas aislado e independiente.
 
 ---
 
 ## 🎯 Principio Fundamental de Sincronización
 
-> **La fuente remota (Google Tasks / Google Keep) es la autoridad sobre la existencia del elemento.**
+> **La fuente remota (Google Tasks) es la autoridad sobre la existencia del elemento.**
 > **El Kanban es la autoridad exclusiva sobre el estado visual (columna) y su orden relativo.**
 
-1. **Bandeja de Entrada Automática:** Toda nueva tarea creada en Google Tasks o Google Keep ingresa automáticamente en la primera columna: **"Para hacer"**.
-2. **Eliminación Total:** Si una tarea es borrada en Google Tasks o Keep, **desaparece de inmediato del Kanban durante la sincronización**, sin importar si estaba en *Para hacer*, *En progreso*, *En revisión* o *Terminado* (nunca quedan tareas huérfanas).
+1. **Bandeja de Entrada Automática:** Toda nueva tarea creada en Google Tasks ingresa automáticamente en la primera columna: **"Para hacer"**.
+2. **Eliminación Total:** Si una tarea es borrada en Google Tasks, **desaparece de inmediato del Kanban durante la sincronización**, sin importar si estaba en *Para hacer*, *En progreso*, *En revisión* o *Terminado* (nunca quedan tareas huérfanas).
 3. **Persistencia de Flujo:** Si se edita el título, descripción o fecha en Google, el Kanban actualiza el contenido pero **respeta la columna actual** donde el usuario la posicionó.
 4. **Idempotencia Absoluta:** Ejecutar la sincronización múltiples veces jamás genera tarjetas duplicadas gracias al índice único: `(user_id, source, source_id)`.
 
@@ -23,7 +23,7 @@ Una aplicación web moderna, rápida y minimalista que actúa como una **capa vi
 │                    Frontend (React + Vite + TS)                 │
 │  - Tablero Kanban 4 Columnas (@hello-pangea/dnd)                │
 │  - Optimistic UI con Rollback automático ante fallos de red     │
-│  - Badges [G Tasks] y [G Keep], fechas de vencimiento y notas   │
+│  - Badges [G Tasks], fechas de vencimiento y subtareas nativas  │
 │  - Modal de Selección de Listas y Configuración de Fuentes      │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │ REST API (Cookies HttpOnly Seguras)
@@ -34,8 +34,7 @@ Una aplicación web moderna, rápida y minimalista que actúa como una **capa vi
 │  Kanban Controller ─► Drag & Drop, movimientos y ordenamiento   │
 │  Sync Service ──────► Motor de Conciliación de Conjuntos (Diff) │
 │                                                                 │
-│  ├── GoogleTasksAdapter: Cliente oficial Tasks API v1           │
-│  └── GoogleKeepAdapter:  Evaluación Workspace & Ingest Bridge   │
+│  └── GoogleTasksAdapter: Cliente oficial Tasks API v1           │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
@@ -63,8 +62,7 @@ kanban-tasks-board/
 │   ├── src/
 │   │   ├── adapters/                # Patrón Adapter para fuentes
 │   │   │   ├── sourceAdapter.interface.ts
-│   │   │   ├── googleTasks.adapter.ts
-│   │   │   └── googleKeep.adapter.ts
+│   │   │   └── googleTasks.adapter.ts
 │   │   ├── config/                  # Configuración tipada
 │   │   ├── controllers/             # Controladores REST Express
 │   │   ├── db/                      # Cliente Prisma y comprobación de salud
@@ -83,8 +81,8 @@ kanban-tasks-board/
     │   │   ├── Header.tsx           # Barra superior con sync y avatar
     │   │   ├── KanbanBoard.tsx      # Orquestador Drag & Drop optimista
     │   │   ├── KanbanColumn.tsx     # Columnas con acentos visuales
-    │   │   ├── KanbanCard.tsx       # Tarjeta con badges, notas y fechas
-    │   │   ├── SettingsModal.tsx    # Configuración de listas y Keep
+    │   │   ├── KanbanCard.tsx       # Tarjeta con badges, subtareas y fechas
+    │   │   ├── SettingsModal.tsx    # Configuración de listas de Google Tasks
     │   │   └── Toast.tsx            # Alertas visuales no bloqueantes
     │   ├── types/index.ts           # Modelos de datos
     │   ├── App.tsx
@@ -95,23 +93,15 @@ kanban-tasks-board/
 
 ---
 
-## 🔍 3. Evaluación Técnica Oficial de Google Tasks y Google Keep
+## 🔍 3. Integración Oficial con Google Tasks API v1
 
-### A. Google Tasks API v1 (`tasks.googleapis.com`)
 * **Estado:** ✅ **Totalmente compatible y abierta** para cuentas personales (`@gmail.com`) y Google Workspace.
 * **Operaciones utilizadas:**
   * `tasklists.list`: Listado de listas del usuario.
-  * `tasks.list`: Extracción de tareas activas con soporte para parámetros incrementales (`showCompleted`, `showDeleted`, `updatedMin`).
-  * `tasks.patch`: Actualización de estado a `completed` cuando el usuario activa la opción configurable en el Kanban.
+  * `tasks.list`: Extracción de tareas activas con soporte para parámetros incrementales (`showCompleted`, `showDeleted`, `updatedMin`) y jerarquía de subtareas nativas (`parent`).
+  * `tasks.patch`: Actualización de estado a `completed` cuando el usuario activa la opción configurable en el Kanban o interactúa con los checkboxes de subtareas.
 * **Scopes OAuth:** `https://www.googleapis.com/auth/tasks`
-
-### B. Google Keep API v1 (`keep.googleapis.com`) — Realidad Técnica
-* **Limitación Fundamental:** ⚠️ **Google restringe la API oficial de Keep a dominios empresariales de Google Workspace**.
-* **Motivo:** La API oficial de Keep requiere autenticación mediante **Cuentas de Servicio con Delegación de Todo el Dominio (Domain-Wide Delegation)**. Si una aplicación solicita scopes de Keep para un usuario estándar `@gmail.com`, Google responde con error `400: invalid_scope` o `403: Insufficient authentication scopes`.
-* **Solución Implementada:**
-  1. `GoogleKeepAdapter`: Soporta credenciales Workspace para entornos corporativos.
-  2. Para cuentas personales, el modal de configuración explica la restricción oficial de Google de forma transparente.
-  3. Incluye un **Keep Ingest Bridge** que permite importar notas o checklists estructuradas de Keep directamente a la columna *"Para hacer"*, identificadas con el badge visual oficial `[G Keep]`.
+* **Arquitectura Zero-DB:** El frontend se conecta de forma directa a Google Tasks API mediante tokens seguros obtenidos con Google Identity Services (GIS), eliminando la necesidad de persistir datos del usuario en servidores externos.
 
 ---
 
@@ -132,7 +122,7 @@ ON kanban_items (user_id, status);
 |---|---|---|
 | `id` | UUID | Clave primaria |
 | `user_id` | UUID | Clave foránea a `users` |
-| `source` | VARCHAR | `'google_tasks'` o `'google_keep'` |
+| `source` | VARCHAR | `'google_tasks'` |
 | `source_id` | VARCHAR | ID original en Google |
 | `source_list_id`| VARCHAR | ID de lista de origen |
 | `source_list_name`| VARCHAR | Nombre legible de lista |

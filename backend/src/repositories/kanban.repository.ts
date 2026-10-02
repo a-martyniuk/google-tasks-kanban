@@ -3,7 +3,7 @@ import { prisma } from '../db/prisma.js';
 
 export interface CreateKanbanItemDTO {
   userId: string;
-  source: 'google_tasks' | 'google_keep';
+  source: 'google_tasks';
   sourceId: string;
   sourceListId?: string;
   sourceListName?: string;

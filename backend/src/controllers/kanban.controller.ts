@@ -5,8 +5,6 @@ import { KanbanService } from '../services/kanban.service.js';
 import { SyncService } from '../services/sync.service.js';
 import { AuthService } from '../services/auth.service.js';
 import { GoogleTasksAdapter } from '../adapters/googleTasks.adapter.js';
-import { GoogleKeepAdapter } from '../adapters/googleKeep.adapter.js';
-
 const moveItemSchema = z.object({
   targetStatus: z.enum(['todo', 'in_progress', 'review', 'done']),
   targetPosition: z.number(),
@@ -18,21 +16,14 @@ const updateSettingsSchema = z.object({
   autoSyncInterval: z.number().min(10).max(3600).optional(),
 });
 
-const importKeepSchema = z.object({
-  title: z.string().min(1),
-  items: z.array(z.string()),
-  category: z.string().optional(),
-});
-
 const authService = new AuthService();
 const tasksAdapter = new GoogleTasksAdapter();
-const keepAdapter = new GoogleKeepAdapter();
 
 export class KanbanController {
   private async getServices() {
     const repository = await getRepository();
     const kanbanService = new KanbanService(repository, tasksAdapter);
-    const syncService = new SyncService(repository, [tasksAdapter, keepAdapter]);
+    const syncService = new SyncService(repository, [tasksAdapter]);
     return { repository, kanbanService, syncService };
   }
 
@@ -117,7 +108,6 @@ export class KanbanController {
       const userId = req.user!.userId;
       const { repository } = await this.getServices();
       const settings = await repository.getSettings(userId);
-      const keepStatus = keepAdapter.getApiStatus(false);
 
       let selectedTaskLists: string[] = [];
       try {
@@ -131,7 +121,6 @@ export class KanbanController {
           ...settings,
           selectedTaskLists,
         },
-        keepStatus,
       });
     } catch (err: any) {
       res.status(500).json({ error: true, message: err.message });
@@ -184,7 +173,7 @@ export class KanbanController {
       const result = await syncService.syncUser(
         userId,
         accessToken,
-        source === 'google_tasks' || source === 'google_keep' ? source : undefined
+        source === 'google_tasks' ? source : undefined
       );
 
       res.json({
@@ -193,50 +182,6 @@ export class KanbanController {
       });
     } catch (err: any) {
       console.error('[KanbanController] Error ejecutando sincronización:', err);
-      res.status(500).json({ error: true, message: err.message });
-    }
-  }
-
-  async importKeepNotes(req: Request, res: Response) {
-    try {
-      const userId = req.user!.userId;
-      const parsed = importKeepSchema.safeParse(req.body);
-
-      if (!parsed.success) {
-        return res.status(400).json({ error: true, message: 'Formato de nota Keep inválido' });
-      }
-
-      const { repository } = await this.getServices();
-      const maxTodoPos = await repository.getMaxPosition(userId, 'todo');
-
-      const importedItems = [];
-      let currentPos = maxTodoPos;
-
-      for (let i = 0; i < parsed.data.items.length; i++) {
-        const itemText = parsed.data.items[i].trim();
-        if (!itemText) continue;
-
-        currentPos += 1000;
-        const sourceId = `keep-import-${Date.now()}-${i}`;
-        const item = await repository.createItem({
-          userId,
-          source: 'google_keep',
-          sourceId,
-          sourceListName: parsed.data.title,
-          title: itemText,
-          description: `Importado de Google Keep: "${parsed.data.title}"`,
-          status: 'todo', // Entra en "Para hacer"
-          position: currentPos,
-        });
-        importedItems.push(item);
-      }
-
-      res.json({
-        success: true,
-        count: importedItems.length,
-        items: importedItems,
-      });
-    } catch (err: any) {
       res.status(500).json({ error: true, message: err.message });
     }
   }

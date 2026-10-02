@@ -56,7 +56,7 @@ model KanbanItem {
   id              String           @id @default(uuid())
   userId          String           @map("user_id")
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source          String           // "google_tasks" | "google_keep"
+  source          String           // "google_tasks"
   sourceId        String           @map("source_id")
   sourceListId    String?          @map("source_list_id")
   sourceListName  String?          @map("source_list_name")

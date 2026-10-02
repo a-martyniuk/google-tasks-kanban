@@ -50,17 +50,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ item, index, onDelete, o
           {/* Header de la tarjeta */}
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              {item.source === 'google_tasks' ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                  G Tasks
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/60">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                  G Keep
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                G Tasks
+              </span>
 
               {item.sourceListName && (
                 <span className="text-[11px] text-slate-500 font-medium truncate max-w-[130px]" title={item.sourceListName}>

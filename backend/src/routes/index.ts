@@ -27,4 +27,3 @@ apiRouter.get('/kanban/lists', authMiddleware, (req, res) => kanbanCtrl.getTaskL
 apiRouter.get('/kanban/settings', authMiddleware, (req, res) => kanbanCtrl.getSettings(req, res));
 apiRouter.patch('/kanban/settings', authMiddleware, (req, res) => kanbanCtrl.updateSettings(req, res));
 apiRouter.post('/kanban/sync', authMiddleware, (req, res) => kanbanCtrl.triggerSync(req, res));
-apiRouter.post('/kanban/keep/import', authMiddleware, (req, res) => kanbanCtrl.importKeepNotes(req, res));

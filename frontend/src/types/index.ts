@@ -10,7 +10,7 @@ export interface SubTaskItem {
 export interface KanbanItem {
   id: string;
   userId: string;
-  source: 'google_tasks' | 'google_keep';
+  source: 'google_tasks';
   sourceId: string;
   sourceListId?: string | null;
   sourceListName?: string | null;
@@ -54,11 +54,6 @@ export interface UserSettings {
   autoSyncInterval: number;
 }
 
-export interface KeepStatus {
-  isAvailable: boolean;
-  isWorkspace: boolean;
-  message: string;
-}
 
 export interface User {
   userId: string;

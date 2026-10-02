@@ -1,4 +1,4 @@
-import { BoardData, KeepStatus, KanbanItem, TaskList, User, UserSettings, SyncResult } from '../types';
+import { BoardData, KanbanItem, TaskList, User, UserSettings, SyncResult } from '../types';
 
 const BASE_URL = '/api';
 
@@ -63,8 +63,8 @@ export const api = {
     return request<{ lists: TaskList[] }>('/kanban/lists');
   },
 
-  async getSettings(): Promise<{ settings: UserSettings; keepStatus: KeepStatus }> {
-    return request<{ settings: UserSettings; keepStatus: KeepStatus }>('/kanban/settings');
+  async getSettings(): Promise<{ settings: UserSettings }> {
+    return request<{ settings: UserSettings }>('/kanban/settings');
   },
 
   async updateSettings(
@@ -81,21 +81,10 @@ export const api = {
   },
 
   // Sync
-  async triggerSync(source?: 'google_tasks' | 'google_keep'): Promise<SyncResult> {
+  async triggerSync(source?: 'google_tasks'): Promise<SyncResult> {
     return request<SyncResult>('/kanban/sync', {
       method: 'POST',
       body: JSON.stringify({ source }),
-    });
-  },
-
-  // Keep Import Bridge
-  async importKeepNotes(
-    title: string,
-    items: string[]
-  ): Promise<{ success: boolean; count: number; items: KanbanItem[] }> {
-    return request<{ success: boolean; count: number; items: KanbanItem[] }>('/kanban/keep/import', {
-      method: 'POST',
-      body: JSON.stringify({ title, items }),
     });
   },
 };

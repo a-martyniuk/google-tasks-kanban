@@ -6,7 +6,7 @@ import { NormalizedTask, TaskSourceAdapter } from '../src/adapters/sourceAdapter
 
 class MockTaskAdapter implements TaskSourceAdapter {
   constructor(
-    public readonly sourceName: 'google_tasks' | 'google_keep',
+    public readonly sourceName: 'google_tasks' = 'google_tasks',
     public mockTasks: NormalizedTask[] = [],
     public completedTasks: string[] = []
   ) {}
@@ -23,7 +23,6 @@ class MockTaskAdapter implements TaskSourceAdapter {
 describe('Kanban Tasks Board: Motor de Sincronización y Reglas de Negocio', () => {
   let repository: InMemoryKanbanRepository;
   let mockTasksAdapter: MockTaskAdapter;
-  let mockKeepAdapter: MockTaskAdapter;
   let syncService: SyncService;
   let kanbanService: KanbanService;
   const userId = 'user-test-123';
@@ -31,8 +30,7 @@ describe('Kanban Tasks Board: Motor de Sincronización y Reglas de Negocio', () 
   beforeEach(() => {
     repository = new InMemoryKanbanRepository();
     mockTasksAdapter = new MockTaskAdapter('google_tasks', []);
-    mockKeepAdapter = new MockTaskAdapter('google_keep', []);
-    syncService = new SyncService(repository, [mockTasksAdapter, mockKeepAdapter]);
+    syncService = new SyncService(repository, [mockTasksAdapter]);
     kanbanService = new KanbanService(repository, mockTasksAdapter);
   });
 
@@ -223,27 +221,13 @@ describe('Kanban Tasks Board: Motor de Sincronización y Reglas de Negocio', () 
     ).rejects.toThrow('no existe o fue eliminada de la fuente');
   });
 
-  it('8. ROBUSTEZ: Falla de un adaptador no bloquea la sincronización del otro', async () => {
-    // Adaptador de Keep arroja excepción
-    mockKeepAdapter.fetchTasks = async () => {
-      throw new Error('Timeout de red en Google Keep');
+  it('8. ROBUSTEZ: Falla de un adaptador registra el error sin romper la ejecución', async () => {
+    mockTasksAdapter.fetchTasks = async () => {
+      throw new Error('Timeout de red en Google Tasks');
     };
 
-    mockTasksAdapter.mockTasks = [
-      {
-        source: 'google_tasks',
-        sourceId: 'task-ok-1',
-        title: 'Tarea Google Tasks exitosa',
-      },
-    ];
-
     const result = await syncService.syncUser(userId, 'token');
-    expect(result.added).toBe(1);
     expect(result.errors?.length).toBe(1);
-    expect(result.errors?.[0]).toContain('Timeout de red en Google Keep');
-
-    // La tarea de Tasks sí fue agregada correctamente
-    const items = await repository.getItems(userId);
-    expect(items.length).toBe(1);
+    expect(result.errors?.[0]).toContain('Timeout de red en Google Tasks');
   });
 });

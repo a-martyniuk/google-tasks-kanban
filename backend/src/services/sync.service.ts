@@ -1,6 +1,5 @@
 import { TaskSourceAdapter } from '../adapters/sourceAdapter.interface.js';
 import { GoogleTasksAdapter } from '../adapters/googleTasks.adapter.js';
-import { GoogleKeepAdapter } from '../adapters/googleKeep.adapter.js';
 import { IKanbanRepository } from '../repositories/kanban.repository.js';
 
 export interface SyncResult {
@@ -25,9 +24,7 @@ export class SyncService {
       }
     } else {
       const tasksAdapter = new GoogleTasksAdapter();
-      const keepAdapter = new GoogleKeepAdapter();
       this.adapters.set(tasksAdapter.sourceName, tasksAdapter);
-      this.adapters.set(keepAdapter.sourceName, keepAdapter);
     }
   }
 
@@ -37,7 +34,7 @@ export class SyncService {
   async syncUser(
     userId: string,
     accessToken: string,
-    specificSource?: 'google_tasks' | 'google_keep'
+    specificSource?: 'google_tasks'
   ): Promise<SyncResult> {
     const settings = await this.repository.getSettings(userId);
     let selectedLists: string[] = [];
@@ -86,7 +83,7 @@ export class SyncService {
           const localItem = localMap.get(remoteTask.sourceId);
 
           if (!localItem) {
-            // ALTA: Nueva tarea en Google Tasks/Keep -> Entra en "Para hacer" (todo)
+            // ALTA: Nueva tarea en Google Tasks -> Entra en "Para hacer" (todo)
             maxTodoPosition += 1000; // Incremento para posición ordinal flotante
             await this.repository.createItem({
               userId,
@@ -130,7 +127,7 @@ export class SyncService {
         }
 
         // 3. Procesar BAJAS (Eliminaciones en la fuente)
-        // REGLA FUNDAMENTAL: Si desaparece de Google Tasks/Keep, se elimina del Kanban
+        // REGLA FUNDAMENTAL: Si desaparece de Google Tasks, se elimina del Kanban
         // sin importar si estaba en 'todo', 'in_progress', 'review' o 'done'.
         const toDeleteIds: string[] = [];
         for (const localItem of localSourceItems) {
