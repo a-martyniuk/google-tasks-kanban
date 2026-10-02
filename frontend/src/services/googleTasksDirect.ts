@@ -62,7 +62,7 @@ class GoogleTasksDirectService {
     return (
       (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
       localStorage.getItem('kanban_google_client_id') ||
-      ''
+      '220352188023-pqkffvbh70svr6jb13lt3ua11d6m6df1.apps.googleusercontent.com'
     );
   }
 
