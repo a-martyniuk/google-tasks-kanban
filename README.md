@@ -76,14 +76,15 @@ kanban-tasks-board/
 │       └── sync_and_kanban.test.ts  # Tests unitarios e integración (8 tests)
 └── frontend/
     ├── src/
-    │   ├── api/client.ts            # Cliente HTTP tipado con cookies
     │   ├── components/
-    │   │   ├── Header.tsx           # Barra superior con sync y avatar
+    │   │   ├── Header.tsx           # Barra superior con sync, perfil y acciones
     │   │   ├── KanbanBoard.tsx      # Orquestador Drag & Drop optimista
-    │   │   ├── KanbanColumn.tsx     # Columnas con acentos visuales
-    │   │   ├── KanbanCard.tsx       # Tarjeta con badges, subtareas y fechas
-    │   │   ├── SettingsModal.tsx    # Configuración de listas de Google Tasks
+    │   │   ├── KanbanColumn.tsx     # Columnas con acentos visuales y creación rápida
+    │   │   ├── KanbanCard.tsx       # Tarjeta con edición inline, subtareas y fechas
+    │   │   ├── SettingsModal.tsx    # Configuración de listas y comportamiento
     │   │   └── Toast.tsx            # Alertas visuales no bloqueantes
+    │   ├── services/
+    │   │   └── googleTasksDirect.ts # Capa cliente directa a Google Tasks v1 (Zero-DB)
     │   ├── types/index.ts           # Modelos de datos
     │   ├── App.tsx
     │   └── main.tsx

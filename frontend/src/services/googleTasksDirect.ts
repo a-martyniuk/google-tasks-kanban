@@ -393,6 +393,83 @@ class GoogleTasksDirectService {
     });
 
     const columns = await Promise.all(columnPromises);
+
+    // Si el usuario seleccionó listas adicionales para sincronizar en Configuración, incorporarlas en "Para hacer"
+    const settings = this.getSettings();
+    const kanbanListIds = new Set(Object.values(mapping).map((m) => m.listId));
+    const extraListIds = (settings.selectedTaskLists || []).filter(
+      (id) => !kanbanListIds.has(id)
+    );
+
+    if (extraListIds.length > 0) {
+      const todoCol = columns.find((c) => c.id === 'todo');
+      if (todoCol) {
+        const listNamesMap = new Map<string, string>();
+        try {
+          const allLists = await this.fetchTaskLists();
+          allLists.forEach((l) => listNamesMap.set(l.id, l.title));
+        } catch {}
+
+        for (const extraId of extraListIds) {
+          try {
+            const extraRes = await fetch(
+              `https://tasks.googleapis.com/tasks/v1/lists/${extraId}/tasks?showCompleted=false&showHidden=true&maxResults=100`,
+              { headers: { Authorization: `Bearer ${this.accessToken}` } }
+            );
+            if (extraRes.ok) {
+              const extraJson = await extraRes.json();
+              const extraTasks: any[] = extraJson.items || [];
+              const extraParents = new Map<string, KanbanItem>();
+              const extraSubtasks = new Map<string, SubTaskItem[]>();
+
+              extraTasks.forEach((t) => {
+                if (!t.id || !t.title || t.deleted) return;
+                if (t.parent) {
+                  const list = extraSubtasks.get(t.parent) || [];
+                  list.push({
+                    id: t.id,
+                    title: t.title,
+                    status: t.status || 'needsAction',
+                    completed: t.completed || null,
+                  });
+                  extraSubtasks.set(t.parent, list);
+                } else {
+                  extraParents.set(t.id, {
+                    id: t.id,
+                    userId: 'google-user',
+                    source: 'google_tasks' as const,
+                    sourceId: t.id,
+                    sourceListId: extraId,
+                    sourceListName: listNamesMap.get(extraId) || 'Lista sincronizada',
+                    title: t.title,
+                    description: t.notes || null,
+                    status: 'todo',
+                    position: (todoCol.items.length + extraParents.size) * 1000,
+                    dueDate: t.due ? new Date(t.due).toISOString() : null,
+                    sourceStatus: t.status || 'needsAction',
+                    lastSyncedAt: new Date().toISOString(),
+                    parentId: null,
+                    subtasks: [],
+                  });
+                }
+              });
+
+              for (const [pId, subs] of extraSubtasks.entries()) {
+                const parent = extraParents.get(pId);
+                if (parent) {
+                  parent.subtasks = subs;
+                }
+              }
+
+              todoCol.items.push(...Array.from(extraParents.values()));
+            }
+          } catch (err) {
+            console.warn(`Error al consultar lista extra ${extraId}:`, err);
+          }
+        }
+      }
+    }
+
     const totalCount = columns.reduce((acc, col) => acc + col.items.length, 0);
 
     return {
@@ -720,6 +797,42 @@ class GoogleTasksDirectService {
 
     if (!res.ok) {
       throw new Error(`Error actualizando subtarea: ${res.statusText}`);
+    }
+  }
+
+  // ==========================================
+  // ELIMINAR SUBTAREA EN GOOGLE TASKS
+  // ==========================================
+
+  public async deleteSubtask(
+    listId: string,
+    subtaskId: string
+  ): Promise<void> {
+    if (this.mockMode || !this.accessToken) {
+      for (const list of this.mockState.values()) {
+        for (const item of list) {
+          if (item.subtasks) {
+            item.subtasks = item.subtasks.filter((s) => s.id !== subtaskId);
+          }
+        }
+      }
+      return;
+    }
+
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${subtaskId}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.accessToken}` },
+      }
+    );
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`Error eliminando subtarea: ${res.statusText}`);
     }
   }
 

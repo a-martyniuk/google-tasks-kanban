@@ -10,6 +10,8 @@ interface KanbanColumnProps {
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
+  onDeleteSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onUpdateTask?: (task: KanbanItem, updates: { title?: string; description?: string | null; dueDate?: string | null }) => Promise<void>;
 }
 
 const COLUMN_THEMES: Record<
@@ -52,6 +54,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onDeleteTask,
   onToggleSubtask,
   onAddSubtask,
+  onDeleteSubtask,
+  onUpdateTask,
 }) => {
   const theme = COLUMN_THEMES[column.id] || COLUMN_THEMES.todo;
   const [isAdding, setIsAdding] = useState(false);
@@ -172,6 +176,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
                 onToggleSubtask={onToggleSubtask}
                 onAddSubtask={onAddSubtask}
+                onDeleteSubtask={onDeleteSubtask}
+                onUpdateTask={onUpdateTask}
               />
             ))}
             {provided.placeholder}

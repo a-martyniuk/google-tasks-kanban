@@ -149,37 +149,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                         <ListFilter className="w-3.5 h-3.5 text-slate-500" />
-                        Listas de Tareas a Sincronizar
+                        Listas Adicionales a Sincronizar
                       </label>
                       <span className="text-[11px] text-slate-500">
                         {selectedLists.length === 0
-                          ? 'Todas las listas activas'
+                          ? 'Ninguna seleccionada'
                           : `${selectedLists.length} seleccionada(s)`}
                       </span>
                     </div>
 
                     <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-56 overflow-y-auto bg-slate-50/30">
-                      {taskLists.map((list) => {
-                        const isChecked =
-                          selectedLists.length === 0 || selectedLists.includes(list.id);
-                        return (
-                          <label
-                            key={list.id}
-                            className="flex items-center justify-between p-3 hover:bg-slate-50 cursor-pointer transition-colors"
-                          >
-                            <span className="text-sm font-medium text-slate-800">{list.title}</span>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleList(list.id)}
-                              className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500"
-                            />
-                          </label>
-                        );
-                      })}
+                      {taskLists.filter((l) => !l.title.startsWith('[KB] ')).length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                          No tienes otras listas personales en Google Tasks.
+                        </div>
+                      ) : (
+                        taskLists
+                          .filter((l) => !l.title.startsWith('[KB] '))
+                          .map((list) => {
+                            const isChecked = selectedLists.includes(list.id);
+                            return (
+                              <label
+                                key={list.id}
+                                className="flex items-center justify-between p-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                              >
+                                <span className="text-sm font-medium text-slate-800">{list.title}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleList(list.id)}
+                                  className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                              </label>
+                            );
+                          })
+                      )}
                     </div>
                     <p className="mt-2 text-[11px] text-slate-500">
-                      Las tareas de las listas seleccionadas entrarán automáticamente en la columna{' '}
+                      Las tareas de estas listas entrarán automáticamente en la columna{' '}
                       <span className="font-semibold text-slate-700">"Para hacer"</span>.
                     </p>
                   </div>

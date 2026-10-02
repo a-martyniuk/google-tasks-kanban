@@ -127,33 +127,148 @@ export const App: React.FC = () => {
     }
   };
 
-  // Mover tarjeta entre listas de Google Tasks
+  // Mover tarjeta entre listas de Google Tasks (optimista sin flicker)
   const handleMoveTask = async (
     task: KanbanItem,
     targetStatus: KanbanStatus,
     targetPosition: number
   ) => {
-    await googleTasksDirect.moveTaskBetweenColumns(task, targetStatus, targetPosition);
-    await loadBoard();
+    try {
+      const updated = await googleTasksDirect.moveTaskBetweenColumns(
+        task,
+        targetStatus,
+        targetPosition
+      );
+      setColumns((prev) =>
+        prev.map((col) => {
+          if (col.id === task.status) {
+            return {
+              ...col,
+              items: col.items.filter((i) => i.id !== task.id && i.id !== updated.id),
+            };
+          }
+          if (col.id === targetStatus) {
+            const itemsWithout = col.items.filter(
+              (i) => i.id !== task.id && i.id !== updated.id
+            );
+            return {
+              ...col,
+              items: [...itemsWithout, updated].sort((a, b) => a.position - b.position),
+            };
+          }
+          return col;
+        })
+      );
+    } catch (err: any) {
+      console.error('Error al mover tarea:', err);
+      addToast('error', `Error al mover tarea: ${err.message}`);
+      await loadBoard();
+    }
   };
 
-  // Crear tarea rápida con soporte de fecha de vencimiento
+  // Crear tarea rápida con soporte de fecha de vencimiento (optimista)
   const handleAddTask = async (
     status: KanbanStatus,
     title: string,
     description?: string,
     dueDate?: string | null
   ) => {
-    await googleTasksDirect.createTask(status, title, description, dueDate);
-    await loadBoard();
-    addToast('success', `Tarea agregada a "${status}".`);
+    try {
+      const created = await googleTasksDirect.createTask(status, title, description, dueDate);
+      setColumns((prev) =>
+        prev.map((col) => {
+          if (col.id !== status) return col;
+          return {
+            ...col,
+            items: [...col.items, created],
+          };
+        })
+      );
+      setTotalCount((prev) => prev + 1);
+      addToast('success', `Tarea agregada a "${status}".`);
+    } catch (err: any) {
+      addToast('error', `Error creando tarea: ${err.message}`);
+      await loadBoard();
+    }
   };
 
-  // Eliminar tarea en Google Tasks
+  // Eliminar tarea en Google Tasks (optimista)
   const handleDeleteTask = async (task: KanbanItem) => {
-    await googleTasksDirect.deleteTask(task);
-    await loadBoard();
-    addToast('info', `Tarea "${task.title}" eliminada de Google Tasks.`);
+    setColumns((prev) =>
+      prev.map((col) => ({
+        ...col,
+        items: col.items.filter((i) => i.id !== task.id),
+      }))
+    );
+    setTotalCount((c) => Math.max(0, c - 1));
+
+    try {
+      await googleTasksDirect.deleteTask(task);
+      addToast('info', `Tarea "${task.title}" eliminada de Google Tasks.`);
+    } catch (err: any) {
+      addToast('error', `Error al eliminar tarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
+  // Eliminar subtarea individual en Google Tasks
+  const handleDeleteSubtask = async (task: KanbanItem, subtask: SubTaskItem) => {
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== task.status) return col;
+        return {
+          ...col,
+          items: col.items.map((item) => {
+            if (item.id !== task.id) return item;
+            return {
+              ...item,
+              subtasks: (item.subtasks || []).filter((s) => s.id !== subtask.id),
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      const listId = task.sourceListId || 'mock';
+      await googleTasksDirect.deleteSubtask(listId, subtask.id);
+      addToast('info', `Subtarea "${subtask.title}" eliminada.`);
+    } catch (err: any) {
+      addToast('error', `Error al eliminar subtarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
+  // Actualizar datos de tarjeta (título, notas, vencimiento)
+  const handleUpdateTask = async (
+    task: KanbanItem,
+    updates: { title?: string; description?: string | null; dueDate?: string | null }
+  ) => {
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== task.status) return col;
+        return {
+          ...col,
+          items: col.items.map((item) => {
+            if (item.id !== task.id) return item;
+            return {
+              ...item,
+              ...(updates.title !== undefined ? { title: updates.title } : {}),
+              ...(updates.description !== undefined ? { description: updates.description } : {}),
+              ...(updates.dueDate !== undefined ? { dueDate: updates.dueDate } : {}),
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      await googleTasksDirect.updateTask(task, updates);
+      addToast('success', `Tarea "${updates.title || task.title}" actualizada.`);
+    } catch (err: any) {
+      addToast('error', `Error al actualizar tarea: ${err.message}`);
+      await loadBoard();
+    }
   };
 
   // Marcar / Desmarcar subtarea (optimista)
@@ -410,6 +525,8 @@ export const App: React.FC = () => {
                 onDeleteTask={handleDeleteTask}
                 onToggleSubtask={handleToggleSubtask}
                 onAddSubtask={handleAddSubtask}
+                onDeleteSubtask={handleDeleteSubtask}
+                onUpdateTask={handleUpdateTask}
               />
             </div>
           </div>

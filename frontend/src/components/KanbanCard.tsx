@@ -1,6 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { Calendar, CheckCheck, ChevronDown, ChevronUp, Trash2, CheckSquare, Plus } from 'lucide-react';
+import {
+  Calendar,
+  CheckCheck,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  CheckSquare,
+  Plus,
+  Pencil,
+  Check,
+  X,
+} from 'lucide-react';
 import { KanbanItem, SubTaskItem } from '../types';
 
 interface KanbanCardProps {
@@ -9,6 +20,11 @@ interface KanbanCardProps {
   onDelete?: () => void;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
+  onDeleteSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onUpdateTask?: (
+    task: KanbanItem,
+    updates: { title?: string; description?: string | null; dueDate?: string | null }
+  ) => Promise<void>;
 }
 
 export const KanbanCard: React.FC<KanbanCardProps> = ({
@@ -17,11 +33,30 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   onDelete,
   onToggleSubtask,
   onAddSubtask,
+  onDeleteSubtask,
+  onUpdateTask,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+
+  // Modo edición inline
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(item.title);
+  const [editDescription, setEditDescription] = useState(item.description || '');
+  const [editDueDate, setEditDueDate] = useState(
+    item.dueDate ? item.dueDate.split('T')[0] : ''
+  );
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditTitle(item.title);
+      setEditDescription(item.description || '');
+      setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
+    }
+  }, [item, isEditing]);
 
   const formatDueDate = (dateString?: string | null) => {
     if (!dateString) return null;
@@ -43,6 +78,114 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   const due = formatDueDate(item.dueDate);
+
+  if (isEditing) {
+    return (
+      <Draggable draggableId={item.id} index={index}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            className={`bg-white rounded-xl p-4 mb-3 border-2 border-blue-500 shadow-md ${
+              snapshot.isDragging ? 'cursor-grabbing' : ''
+            }`}
+          >
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!editTitle.trim() || !onUpdateTask) return;
+                setIsSaving(true);
+                try {
+                  await onUpdateTask(item, {
+                    title: editTitle.trim(),
+                    description: editDescription.trim() || null,
+                    dueDate: editDueDate ? new Date(editDueDate).toISOString() : null,
+                  });
+                  setIsEditing(false);
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              className="space-y-2.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-600">Editar tarea</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditTitle(item.title);
+                    setEditDescription(item.description || '');
+                    setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Título</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900"
+                  placeholder="Título de la tarea..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Notas / Descripción</label>
+                <textarea
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
+                  placeholder="Notas u observaciones..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Fecha de Vencimiento</label>
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  className="text-xs px-2 py-1 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 w-full"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditTitle(item.title);
+                    setEditDescription(item.description || '');
+                    setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
+                  }}
+                  className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-800 rounded-lg border border-slate-200 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving || !editTitle.trim()}
+                  className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-3 h-3" />
+                  <span>{isSaving ? 'Guardando...' : 'Guardar'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </Draggable>
+    );
+  }
 
   return (
     <Draggable draggableId={item.id} index={index}>
@@ -77,6 +220,19 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 <CheckCheck className="w-3 h-3 text-slate-400" />
                 sincronizado
               </span>
+              {onUpdateTask && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-blue-600 rounded transition-opacity cursor-pointer"
+                  title="Editar tarea"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
               {onDelete && (
                 <button
                   type="button"
@@ -173,23 +329,41 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                           onToggleSubtask(item, sub);
                         }
                       }}
-                      className="flex items-start gap-2 text-xs p-1 rounded hover:bg-slate-50 cursor-pointer transition-colors group/sub"
+                      className="flex items-start justify-between gap-2 text-xs p-1 rounded hover:bg-slate-50 cursor-pointer transition-colors group/sub"
                     >
-                      <input
-                        type="checkbox"
-                        checked={isDone}
-                        onChange={() => {}}
-                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
-                      />
-                      <span
-                        className={`leading-snug transition-all ${
-                          isDone
-                            ? 'line-through text-slate-400'
-                            : 'text-slate-700 group-hover/sub:text-slate-900'
-                        }`}
-                      >
-                        {sub.title}
-                      </span>
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isDone}
+                          onChange={() => {}}
+                          className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
+                        />
+                        <span
+                          className={`leading-snug transition-all break-words ${
+                            isDone
+                              ? 'line-through text-slate-400'
+                              : 'text-slate-700 group-hover/sub:text-slate-900'
+                          }`}
+                        >
+                          {sub.title}
+                        </span>
+                      </div>
+
+                      {onDeleteSubtask && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`¿Eliminar subtarea "${sub.title}"?`)) {
+                              onDeleteSubtask(item, sub);
+                            }
+                          }}
+                          className="opacity-0 group-hover/sub:opacity-100 p-0.5 text-slate-300 hover:text-rose-500 rounded transition-opacity shrink-0 cursor-pointer"
+                          title="Eliminar subtarea"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   );
                 })}

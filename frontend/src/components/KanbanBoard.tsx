@@ -11,6 +11,8 @@ interface KanbanBoardProps {
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
+  onDeleteSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onUpdateTask?: (task: KanbanItem, updates: { title?: string; description?: string | null; dueDate?: string | null }) => Promise<void>;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -21,6 +23,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onDeleteTask,
   onToggleSubtask,
   onAddSubtask,
+  onDeleteSubtask,
+  onUpdateTask,
 }) => {
   const [columns, setColumns] = useState<KanbanColumnType[]>(initialColumns);
 
@@ -126,6 +130,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             onDeleteTask={onDeleteTask}
             onToggleSubtask={onToggleSubtask}
             onAddSubtask={onAddSubtask}
+            onDeleteSubtask={onDeleteSubtask}
+            onUpdateTask={onUpdateTask}
           />
         ))}
       </div>
