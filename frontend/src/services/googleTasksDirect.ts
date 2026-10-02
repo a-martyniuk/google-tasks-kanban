@@ -58,7 +58,22 @@ class GoogleTasksDirectService {
     this.mockMode = enabled;
   }
 
-  public async requestGoogleToken(clientId: string): Promise<string> {
+  public getClientId(): string {
+    return (
+      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
+      localStorage.getItem('kanban_google_client_id') ||
+      ''
+    );
+  }
+
+  public async requestGoogleToken(providedClientId?: string): Promise<string> {
+    const clientId = providedClientId || this.getClientId();
+    if (!clientId) {
+      throw new Error(
+        'Falta configurar VITE_GOOGLE_CLIENT_ID en Vercel para habilitar el inicio de sesión con Gmail con un clic.'
+      );
+    }
+
     return new Promise((resolve, reject) => {
       if (!window.google?.accounts?.oauth2) {
         reject(
