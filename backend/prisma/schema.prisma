@@ -1,0 +1,105 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  oauthAccounts OAuthAccount[]
+  settings      UserSettings?
+  kanbanItems   KanbanItem[]
+  syncLogs      SyncLog[]
+
+  @@map("users")
+}
+
+model OAuthAccount {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  accessToken       String   @map("access_token")
+  refreshToken      String?  @map("refresh_token")
+  expiresAt         BigInt?  @map("expires_at")
+  scope             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, providerAccountId], name: "provider_provider_account_id")
+  @@map("oauth_accounts")
+}
+
+model UserSettings {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique @map("user_id")
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedTaskLists      String   @default("[]") @map("selected_task_lists") // JSON string of IDs
+  completeInSourceOnDone Boolean  @default(false) @map("complete_in_source_on_done")
+  autoSyncInterval       Int      @default(60) @map("auto_sync_interval") // seconds
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+model KanbanItem {
+  id              String           @id @default(uuid())
+  userId          String           @map("user_id")
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source          String           // "google_tasks" | "google_keep"
+  sourceId        String           @map("source_id")
+  sourceListId    String?          @map("source_list_id")
+  sourceListName  String?          @map("source_list_name")
+  title           String
+  description     String?
+  status          String           @default("todo") // "todo" | "in_progress" | "review" | "done"
+  position        Float            @default(0)
+  dueDate         DateTime?        @map("due_date")
+  sourceEtag      String?          @map("source_etag")
+  sourceStatus    String?          @map("source_status")
+  sourceUpdatedAt DateTime?        @map("source_updated_at")
+  lastSyncedAt    DateTime         @default(now()) @map("last_synced_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  movements       KanbanMovement[]
+
+  @@unique([userId, source, sourceId], name: "uq_user_source_source_id")
+  @@index([userId, status])
+  @@map("kanban_items")
+}
+
+model KanbanMovement {
+  id           String     @id @default(uuid())
+  kanbanItemId String     @map("kanban_item_id")
+  kanbanItem   KanbanItem @relation(fields: [kanbanItemId], references: [id], onDelete: Cascade)
+  fromStatus   String     @map("from_status")
+  toStatus     String     @map("to_status")
+  movedAt      DateTime   @default(now()) @map("moved_at")
+
+  @@map("kanban_movements")
+}
+
+model SyncLog {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source       String
+  itemsAdded   Int      @default(0) @map("items_added")
+  itemsUpdated Int      @default(0) @map("items_updated")
+  itemsRemoved Int      @default(0) @map("items_removed")
+  status       String   // "success" | "error"
+  errorMessage String?  @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("sync_logs")
+}
