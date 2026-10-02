@@ -7,9 +7,10 @@ interface KanbanBoardProps {
   initialColumns: KanbanColumnType[];
   onNotify: (type: 'success' | 'error' | 'info', text: string) => void;
   onMoveTask: (task: KanbanItem, targetStatus: KanbanStatus, targetPosition: number) => Promise<void>;
-  onAddTask?: (status: KanbanStatus, title: string, description?: string) => Promise<void>;
+  onAddTask?: (status: KanbanStatus, title: string, description?: string, dueDate?: string | null) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -19,6 +20,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onAddTask,
   onDeleteTask,
   onToggleSubtask,
+  onAddSubtask,
 }) => {
   const [columns, setColumns] = useState<KanbanColumnType[]>(initialColumns);
 
@@ -123,6 +125,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             onAddTask={onAddTask}
             onDeleteTask={onDeleteTask}
             onToggleSubtask={onToggleSubtask}
+            onAddSubtask={onAddSubtask}
           />
         ))}
       </div>

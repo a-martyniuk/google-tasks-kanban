@@ -1,4 +1,4 @@
-import { KanbanItem, KanbanStatus, SubTaskItem } from '../types';
+import { KanbanItem, KanbanStatus, SubTaskItem, TaskList, UserSettings } from '../types';
 
 declare global {
   interface Window {
@@ -56,6 +56,69 @@ class GoogleTasksDirectService {
 
   public setMockMode(enabled: boolean) {
     this.mockMode = enabled;
+  }
+
+  // ==========================================
+  // CONFIGURACIÓN LOCAL (ZERO-DB SETTINGS)
+  // ==========================================
+
+  public getSettings(): UserSettings {
+    const raw = localStorage.getItem('kanban_user_settings');
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {}
+    }
+    return {
+      id: 'zero-db-settings',
+      userId: 'google-user',
+      selectedTaskLists: [],
+      completeInSourceOnDone: false,
+      autoSyncInterval: 60,
+    };
+  }
+
+  public saveSettings(settings: Partial<UserSettings>): UserSettings {
+    const current = this.getSettings();
+    const updated: UserSettings = { ...current, ...settings };
+    localStorage.setItem('kanban_user_settings', JSON.stringify(updated));
+    return updated;
+  }
+
+  public async fetchTaskLists(): Promise<TaskList[]> {
+    if (this.mockMode || !this.accessToken) {
+      return [
+        { id: 'mock-todo', title: 'Para hacer' },
+        { id: 'mock-in-progress', title: 'En progreso' },
+        { id: 'mock-review', title: 'En revisión' },
+        { id: 'mock-done', title: 'Terminado' },
+        { id: 'mock-my-tasks', title: 'Mis tareas (@default)' },
+      ];
+    }
+
+    const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    if (!res.ok) {
+      throw new Error(`Error al consultar listas de Google Tasks: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return (data.items || []).map((l: any) => ({
+      id: l.id,
+      title: l.title,
+    }));
+  }
+
+  private handleTokenExpired(): never {
+    this.accessToken = null;
+    sessionStorage.removeItem('kanban_google_token');
+    throw new Error('Tu sesión de Google expiró. Por favor haz clic en "Vincular con tu Gmail" para renovar.');
   }
 
   public getClientId(): string {
@@ -226,9 +289,13 @@ class GoogleTasksDirectService {
     const columnPromises = statuses.map(async (status) => {
       const listInfo = mapping[status];
       const res = await fetch(
-        `https://tasks.googleapis.com/tasks/v1/lists/${listInfo.listId}/tasks?showCompleted=true&showHidden=false&maxResults=100`,
+        `https://tasks.googleapis.com/tasks/v1/lists/${listInfo.listId}/tasks?showCompleted=true&showHidden=true&maxResults=100`,
         { headers: { Authorization: `Bearer ${this.accessToken}` } }
       );
+
+      if (res.status === 401) {
+        this.handleTokenExpired();
+      }
 
       if (!res.ok) {
         console.warn(`Error al obtener tareas de ${listInfo.title}`);
@@ -263,11 +330,6 @@ class GoogleTasksDirectService {
           subtasksByParent.set(t.parent, list);
         } else {
           // Es una tarea principal
-          // Si está completada y no estamos en la columna "Terminado", la ignoramos para no ensuciar columnas activas
-          if (status !== 'done' && t.status === 'completed') {
-            return;
-          }
-
           parentTasksMap.set(t.id, {
             id: t.id,
             userId: 'google-user',
@@ -288,15 +350,14 @@ class GoogleTasksDirectService {
         }
       });
 
-      // Asociar subtareas a sus padres
+      // Asociar subtareas a sus tareas padre
       for (const [parentId, sublist] of subtasksByParent.entries()) {
         const parentItem = parentTasksMap.get(parentId);
         if (parentItem) {
           parentItem.subtasks = sublist;
         } else {
-          // Si el padre no está presente en esta columna, mostrar como tarjetas individuales
+          // Si el padre no está presente en esta lista, mostrar como tarjetas individuales
           sublist.forEach((sub, idx) => {
-            if (status !== 'done' && sub.status === 'completed') return;
             orphanSubtasks.push({
               id: sub.id,
               userId: 'google-user',
@@ -396,17 +457,22 @@ class GoogleTasksDirectService {
       }
     );
 
+    if (insertRes.status === 401) {
+      this.handleTokenExpired();
+    }
+
     if (!insertRes.ok) {
       throw new Error(`Error creando tarea en lista destino: ${insertRes.statusText}`);
     }
 
     const newGoogleTask = await insertRes.json();
 
-    // Replicar subtareas bajo el nuevo padre si existen
+    // Replicar subtareas bajo el nuevo padre si existen y capturar sus nuevos IDs
+    const updatedSubtasks: SubTaskItem[] = [];
     if (task.subtasks && task.subtasks.length > 0) {
       for (const sub of task.subtasks) {
         try {
-          await fetch(
+          const subRes = await fetch(
             `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${newGoogleTask.id}`,
             {
               method: 'POST',
@@ -416,13 +482,62 @@ class GoogleTasksDirectService {
               },
               body: JSON.stringify({
                 title: sub.title,
-                status: sub.status,
+                status: sub.status || 'needsAction',
               }),
             }
           );
+          if (subRes.ok) {
+            const newSub = await subRes.json();
+            updatedSubtasks.push({
+              id: newSub.id,
+              title: newSub.title,
+              status: newSub.status || 'needsAction',
+              completed: newSub.completed || null,
+            });
+          } else {
+            updatedSubtasks.push(sub);
+          }
         } catch (err) {
           console.warn('Error replicando subtarea:', err);
+          updatedSubtasks.push(sub);
         }
+      }
+    }
+
+    // Comportamiento configurable: Si se mueve a 'Terminado' y está activada la opción en configuración
+    const settings = this.getSettings();
+    if (targetStatus === 'done' && settings.completeInSourceOnDone) {
+      try {
+        await fetch(
+          `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${newGoogleTask.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: 'completed' }),
+          }
+        );
+      } catch (err) {
+        console.warn('Error marcando como completada en fuente remota:', err);
+      }
+    } else if (task.status === 'done' && targetStatus !== 'done') {
+      // Si sale de Terminado, reactivar en la fuente
+      try {
+        await fetch(
+          `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${newGoogleTask.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: 'needsAction' }),
+          }
+        );
+      } catch (err) {
+        console.warn('Error reactivando tarea en fuente remota:', err);
       }
     }
 
@@ -443,6 +558,121 @@ class GoogleTasksDirectService {
       sourceListName: mapping[targetStatus].title,
       status: targetStatus,
       position: targetPosition,
+      subtasks: updatedSubtasks.length > 0 ? updatedSubtasks : task.subtasks,
+    };
+  }
+
+  // ==========================================
+  // CREAR SUBTAREA EN GOOGLE TASKS
+  // ==========================================
+
+  public async createSubtask(
+    parentTask: KanbanItem,
+    title: string
+  ): Promise<SubTaskItem> {
+    if (this.mockMode || !this.accessToken) {
+      const newSub: SubTaskItem = {
+        id: `mock-sub-${Date.now()}`,
+        title,
+        status: 'needsAction',
+      };
+      const list = this.mockState.get(parentTask.status) || [];
+      const parent = list.find((t) => t.id === parentTask.id);
+      if (parent) {
+        parent.subtasks = [...(parent.subtasks || []), newSub];
+      }
+      return newSub;
+    }
+
+    const mapping = this.listMapping || (await this.ensureKanbanLists());
+    const listId = parentTask.sourceListId || mapping[parentTask.status].listId;
+
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks?parent=${parentTask.id}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          status: 'needsAction',
+        }),
+      }
+    );
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    if (!res.ok) {
+      throw new Error(`Error creando subtarea: ${res.statusText}`);
+    }
+
+    const created = await res.json();
+    return {
+      id: created.id,
+      title: created.title,
+      status: created.status || 'needsAction',
+    };
+  }
+
+  // ==========================================
+  // ACTUALIZAR TAREA (TÍTULO, NOTAS, FECHA)
+  // ==========================================
+
+  public async updateTask(
+    task: KanbanItem,
+    updates: { title?: string; description?: string | null; dueDate?: string | null }
+  ): Promise<KanbanItem> {
+    if (this.mockMode || !this.accessToken) {
+      const list = this.mockState.get(task.status) || [];
+      const item = list.find((t) => t.id === task.id);
+      if (item) {
+        if (updates.title !== undefined) item.title = updates.title;
+        if (updates.description !== undefined) item.description = updates.description;
+        if (updates.dueDate !== undefined) item.dueDate = updates.dueDate;
+      }
+      return { ...task, ...updates };
+    }
+
+    const mapping = this.listMapping || (await this.ensureKanbanLists());
+    const listId = task.sourceListId || mapping[task.status].listId;
+
+    const body: any = {};
+    if (updates.title !== undefined) body.title = updates.title;
+    if (updates.description !== undefined) body.notes = updates.description || '';
+    if (updates.dueDate !== undefined) {
+      body.due = updates.dueDate ? new Date(updates.dueDate).toISOString() : null;
+    }
+
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${task.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    if (!res.ok) {
+      throw new Error(`Error actualizando tarea: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return {
+      ...task,
+      title: data.title,
+      description: data.notes || null,
+      dueDate: data.due ? new Date(data.due).toISOString() : null,
     };
   }
 
@@ -484,6 +714,10 @@ class GoogleTasksDirectService {
       }
     );
 
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
     if (!res.ok) {
       throw new Error(`Error actualizando subtarea: ${res.statusText}`);
     }
@@ -503,9 +737,13 @@ class GoogleTasksDirectService {
 
     // Obtener tareas de la lista @default (My Tasks)
     const res = await fetch(
-      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false&showHidden=false&maxResults=100`,
+      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=true&showHidden=true&maxResults=100`,
       { headers: { Authorization: `Bearer ${this.accessToken}` } }
     );
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
 
     if (!res.ok) {
       throw new Error(`Error consultando lista @default: ${res.statusText}`);
@@ -620,6 +858,10 @@ class GoogleTasksDirectService {
       }),
     });
 
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
     if (!res.ok) {
       throw new Error(`Error creando tarea: ${res.statusText}`);
     }
@@ -665,6 +907,10 @@ class GoogleTasksDirectService {
         headers: { Authorization: `Bearer ${this.accessToken}` },
       }
     );
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
 
     if (!res.ok && res.status !== 404) {
       throw new Error(`Error eliminando tarea en Google Tasks: ${res.statusText}`);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ListFilter, Sliders, RefreshCw } from 'lucide-react';
-import { TaskList, UserSettings } from '../types';
-import { api } from '../api/client';
+import { TaskList } from '../types';
+import { googleTasksDirect } from '../services/googleTasksDirect';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -35,15 +35,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const loadSettingsData = async () => {
     setLoading(true);
     try {
-      const [settingsRes, listsRes] = await Promise.all([
-        api.getSettings(),
-        api.getTaskLists(),
+      const [lists, settings] = await Promise.all([
+        googleTasksDirect.fetchTaskLists(),
+        Promise.resolve(googleTasksDirect.getSettings()),
       ]);
 
-      setTaskLists(listsRes.lists);
-      setSelectedLists(settingsRes.settings.selectedTaskLists || []);
-      setCompleteInSourceOnDone(settingsRes.settings.completeInSourceOnDone);
-      setAutoSyncInterval(settingsRes.settings.autoSyncInterval || 60);
+      setTaskLists(lists);
+      setSelectedLists(settings.selectedTaskLists || []);
+      setCompleteInSourceOnDone(settings.completeInSourceOnDone);
+      setAutoSyncInterval(settings.autoSyncInterval || 60);
     } catch (err: any) {
       onNotify('error', `Error al cargar configuración: ${err.message}`);
     } finally {
@@ -60,7 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      await api.updateSettings({
+      googleTasksDirect.saveSettings({
         selectedTaskLists: selectedLists,
         completeInSourceOnDone,
         autoSyncInterval,

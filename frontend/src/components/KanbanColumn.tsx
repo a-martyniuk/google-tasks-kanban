@@ -6,9 +6,10 @@ import { Plus, X, Check } from 'lucide-react';
 
 interface KanbanColumnProps {
   column: KanbanColumnType;
-  onAddTask?: (status: KanbanColumnType['id'], title: string, description?: string) => Promise<void>;
+  onAddTask?: (status: KanbanColumnType['id'], title: string, description?: string, dueDate?: string | null) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
 }
 
 const COLUMN_THEMES: Record<
@@ -50,11 +51,13 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onAddTask,
   onDeleteTask,
   onToggleSubtask,
+  onAddSubtask,
 }) => {
   const theme = COLUMN_THEMES[column.id] || COLUMN_THEMES.todo;
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -63,9 +66,10 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onAddTask(column.id, newTitle.trim(), newNotes.trim() || undefined);
+      await onAddTask(column.id, newTitle.trim(), newNotes.trim() || undefined, newDueDate || null);
       setNewTitle('');
       setNewNotes('');
+      setNewDueDate('');
       setIsAdding(false);
     } finally {
       setIsSubmitting(false);
@@ -116,6 +120,15 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             onChange={(e) => setNewNotes(e.target.value)}
             className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
           />
+          <div className="flex items-center justify-between text-xs pt-0.5">
+            <span className="text-[11px] text-slate-500 font-medium">Vencimiento:</span>
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              className="text-xs px-2 py-0.5 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
+            />
+          </div>
           <div className="flex items-center justify-end gap-1.5 pt-1">
             <button
               type="button"
@@ -123,6 +136,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 setIsAdding(false);
                 setNewTitle('');
                 setNewNotes('');
+                setNewDueDate('');
               }}
               className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
             >
@@ -157,6 +171,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 index={index}
                 onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
                 onToggleSubtask={onToggleSubtask}
+                onAddSubtask={onAddSubtask}
               />
             ))}
             {provided.placeholder}

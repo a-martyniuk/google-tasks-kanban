@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Header } from './components/Header';
 import { KanbanBoard } from './components/KanbanBoard';
 import { SettingsModal } from './components/SettingsModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { KanbanColumn, KanbanItem, KanbanStatus, SubTaskItem, User } from './types';
 import { googleTasksDirect } from './services/googleTasksDirect';
-import { Smartphone, CheckCircle, RefreshCw, ShieldCheck, Download } from 'lucide-react';
+import { Smartphone, CheckCircle, RefreshCw, ShieldCheck, Download, Search, X } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | undefined>(undefined);
@@ -16,6 +16,7 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const syncIntervalRef = useRef<number | null>(null);
@@ -81,18 +82,36 @@ export const App: React.FC = () => {
     initApp();
   }, [loadBoard]);
 
-  // Sincronización periódica automática (cada 60 segundos)
+  // Sincronización periódica automática configurable
   useEffect(() => {
+    const settings = googleTasksDirect.getSettings();
+    const intervalMs = (settings.autoSyncInterval || 60) * 1000;
+
     syncIntervalRef.current = window.setInterval(() => {
       if (!isSyncing) {
         loadBoard();
       }
-    }, 60000);
+    }, intervalMs);
 
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
   }, [isSyncing, loadBoard]);
+
+  // Filtrado reactivo de tarjetas por búsqueda
+  const filteredColumns = useMemo(() => {
+    if (!searchQuery.trim()) return columns;
+    const q = searchQuery.toLowerCase().trim();
+    return columns.map((col) => ({
+      ...col,
+      items: col.items.filter(
+        (item) =>
+          item.title.toLowerCase().includes(q) ||
+          (item.description && item.description.toLowerCase().includes(q)) ||
+          (item.subtasks && item.subtasks.some((s) => s.title.toLowerCase().includes(q)))
+      ),
+    }));
+  }, [columns, searchQuery]);
 
   // Sincronizar manualmente
   const handleManualSync = async () => {
@@ -118,13 +137,14 @@ export const App: React.FC = () => {
     await loadBoard();
   };
 
-  // Crear tarea rápida
+  // Crear tarea rápida con soporte de fecha de vencimiento
   const handleAddTask = async (
     status: KanbanStatus,
     title: string,
-    description?: string
+    description?: string,
+    dueDate?: string | null
   ) => {
-    await googleTasksDirect.createTask(status, title, description);
+    await googleTasksDirect.createTask(status, title, description, dueDate);
     await loadBoard();
     addToast('success', `Tarea agregada a "${status}".`);
   };
@@ -165,6 +185,55 @@ export const App: React.FC = () => {
       await googleTasksDirect.toggleSubtask(listId, subtask.id, newStatus === 'completed');
     } catch (err: any) {
       addToast('error', `Error al actualizar subtarea: ${err.message}`);
+      loadBoard();
+    }
+  };
+
+  // Añadir subtarea directamente a una tarjeta en Google Tasks
+  const handleAddSubtask = async (task: KanbanItem, title: string) => {
+    const tempId = `temp-sub-${Date.now()}`;
+    const optimisticSub: SubTaskItem = {
+      id: tempId,
+      title,
+      status: 'needsAction',
+    };
+
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== task.status) return col;
+        return {
+          ...col,
+          items: col.items.map((item) => {
+            if (item.id !== task.id) return item;
+            return {
+              ...item,
+              subtasks: [...(item.subtasks || []), optimisticSub],
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      const created = await googleTasksDirect.createSubtask(task, title);
+      setColumns((prev) =>
+        prev.map((col) => {
+          if (col.id !== task.status) return col;
+          return {
+            ...col,
+            items: col.items.map((item) => {
+              if (item.id !== task.id) return item;
+              return {
+                ...item,
+                subtasks: (item.subtasks || []).map((s) => (s.id === tempId ? created : s)),
+              };
+            }),
+          };
+        })
+      );
+      addToast('success', `Subtarea "${title}" agregada en Google Tasks.`);
+    } catch (err: any) {
+      addToast('error', `Error al crear subtarea: ${err.message}`);
       loadBoard();
     }
   };
@@ -291,6 +360,26 @@ export const App: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                {/* Buscador reactivo de tareas y subtareas */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar tareas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 pr-7 py-1.5 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 sm:w-48 text-slate-700 shadow-2xs"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
                 {user && !user.isDemo && (
                   <button
                     onClick={handleImportFromMyTasks}
@@ -314,12 +403,13 @@ export const App: React.FC = () => {
 
             <div className="flex-1">
               <KanbanBoard
-                initialColumns={columns}
+                initialColumns={filteredColumns}
                 onNotify={addToast}
                 onMoveTask={handleMoveTask}
                 onAddTask={handleAddTask}
                 onDeleteTask={handleDeleteTask}
                 onToggleSubtask={handleToggleSubtask}
+                onAddSubtask={handleAddSubtask}
               />
             </div>
           </div>
