@@ -3,9 +3,9 @@ import { Header } from './components/Header';
 import { KanbanBoard } from './components/KanbanBoard';
 import { SettingsModal } from './components/SettingsModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { KanbanColumn, KanbanItem, KanbanStatus, User } from './types';
+import { KanbanColumn, KanbanItem, KanbanStatus, SubTaskItem, User } from './types';
 import { googleTasksDirect } from './services/googleTasksDirect';
-import { Smartphone, CheckCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Smartphone, CheckCircle, RefreshCw, ShieldCheck, Download } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | undefined>(undefined);
@@ -14,6 +14,7 @@ export const App: React.FC = () => {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -135,6 +136,59 @@ export const App: React.FC = () => {
     addToast('info', `Tarea "${task.title}" eliminada de Google Tasks.`);
   };
 
+  // Marcar / Desmarcar subtarea (optimista)
+  const handleToggleSubtask = async (task: KanbanItem, subtask: SubTaskItem) => {
+    const newStatus = subtask.status === 'completed' ? 'needsAction' : 'completed';
+
+    // Actualización optimista inmediata
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== task.status) return col;
+        return {
+          ...col,
+          items: col.items.map((item) => {
+            if (item.id !== task.id) return item;
+            return {
+              ...item,
+              subtasks: (item.subtasks || []).map((sub) => {
+                if (sub.id !== subtask.id) return sub;
+                return { ...sub, status: newStatus };
+              }),
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      const listId = task.sourceListId || 'mock';
+      await googleTasksDirect.toggleSubtask(listId, subtask.id, newStatus === 'completed');
+    } catch (err: any) {
+      addToast('error', `Error al actualizar subtarea: ${err.message}`);
+      loadBoard();
+    }
+  };
+
+  // Importar tareas de la lista por defecto ("My Tasks")
+  const handleImportFromMyTasks = async () => {
+    if (isImporting) return;
+    setIsImporting(true);
+    try {
+      addToast('info', 'Consultando y migrando tareas desde "My Tasks"...');
+      const count = await googleTasksDirect.importTasksFromDefaultList();
+      if (count > 0) {
+        addToast('success', `¡Se importaron ${count} tareas/subtareas a "Para hacer"!`);
+        await loadBoard();
+      } else {
+        addToast('info', 'No se encontraron tareas pendientes en tu lista "My Tasks".');
+      }
+    } catch (err: any) {
+      addToast('error', `Error importando tareas: ${err.message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   // Conectar con Google OAuth real (1 solo clic)
   const handleLoginGoogle = async () => {
     try {
@@ -236,11 +290,25 @@ export const App: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs self-start sm:self-auto">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>
-                  <strong className="text-slate-800">{totalCount}</strong> tareas sincronizadas
-                </span>
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                {user && !user.isDemo && (
+                  <button
+                    onClick={handleImportFromMyTasks}
+                    disabled={isImporting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+                    title="Importar tareas y subtareas existentes de tu lista por defecto 'My Tasks' a la columna 'Para hacer'"
+                  >
+                    <Download className={`w-3.5 h-3.5 ${isImporting ? 'animate-bounce' : ''}`} />
+                    <span>{isImporting ? 'Importando...' : 'Importar de "My Tasks"'}</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>
+                    <strong className="text-slate-800">{totalCount}</strong> tareas sincronizadas
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -251,6 +319,7 @@ export const App: React.FC = () => {
                 onMoveTask={handleMoveTask}
                 onAddTask={handleAddTask}
                 onDeleteTask={handleDeleteTask}
+                onToggleSubtask={handleToggleSubtask}
               />
             </div>
           </div>

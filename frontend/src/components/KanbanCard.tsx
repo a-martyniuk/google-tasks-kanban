@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { Calendar, CheckCheck, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
-import { KanbanItem } from '../types';
+import { Calendar, CheckCheck, ChevronDown, ChevronUp, Trash2, CheckSquare } from 'lucide-react';
+import { KanbanItem, SubTaskItem } from '../types';
 
 interface KanbanCardProps {
   item: KanbanItem;
   index: number;
   onDelete?: () => void;
+  onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
 }
 
-export const KanbanCard: React.FC<KanbanCardProps> = ({ item, index, onDelete }) => {
+export const KanbanCard: React.FC<KanbanCardProps> = ({ item, index, onDelete, onToggleSubtask }) => {
   const [expanded, setExpanded] = useState(false);
 
   const formatDueDate = (dateString?: string | null) => {
@@ -122,6 +123,74 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ item, index, onDelete })
                   )}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Subtareas / Checklist */}
+          {item.subtasks && item.subtasks.length > 0 && (
+            <div className="mt-3 pt-2.5 border-t border-slate-100">
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5 font-medium">
+                <span className="flex items-center gap-1.5">
+                  <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                  Subtareas ({item.subtasks.filter((s) => s.status === 'completed').length}/{item.subtasks.length})
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {Math.round(
+                    (item.subtasks.filter((s) => s.status === 'completed').length /
+                      item.subtasks.length) *
+                      100
+                  )}%
+                </span>
+              </div>
+
+              {/* Barra de progreso */}
+              <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${
+                      (item.subtasks.filter((s) => s.status === 'completed').length /
+                        item.subtasks.length) *
+                      100
+                    }%`,
+                  }}
+                />
+              </div>
+
+              {/* Lista de subtareas */}
+              <div className="space-y-1">
+                {item.subtasks.map((sub) => {
+                  const isDone = sub.status === 'completed';
+                  return (
+                    <div
+                      key={sub.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onToggleSubtask) {
+                          onToggleSubtask(item, sub);
+                        }
+                      }}
+                      className="flex items-start gap-2 text-xs p-1 rounded hover:bg-slate-50 cursor-pointer transition-colors group/sub"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isDone}
+                        onChange={() => {}}
+                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
+                      />
+                      <span
+                        className={`leading-snug transition-all ${
+                          isDone
+                            ? 'line-through text-slate-400'
+                            : 'text-slate-700 group-hover/sub:text-slate-900'
+                        }`}
+                      >
+                        {sub.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

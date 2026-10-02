@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
-import { KanbanColumn as KanbanColumnType, KanbanItem } from '../types';
+import { KanbanColumn as KanbanColumnType, KanbanItem, SubTaskItem } from '../types';
 import { KanbanCard } from './KanbanCard';
 import { Plus, X, Check } from 'lucide-react';
 
@@ -8,6 +8,7 @@ interface KanbanColumnProps {
   column: KanbanColumnType;
   onAddTask?: (status: KanbanColumnType['id'], title: string, description?: string) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
+  onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
 }
 
 const COLUMN_THEMES: Record<
@@ -48,6 +49,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   column,
   onAddTask,
   onDeleteTask,
+  onToggleSubtask,
 }) => {
   const theme = COLUMN_THEMES[column.id] || COLUMN_THEMES.todo;
   const [isAdding, setIsAdding] = useState(false);
@@ -154,6 +156,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 item={item}
                 index={index}
                 onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
+                onToggleSubtask={onToggleSubtask}
               />
             ))}
             {provided.placeholder}

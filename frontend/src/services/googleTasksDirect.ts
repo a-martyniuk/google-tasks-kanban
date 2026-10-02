@@ -1,4 +1,4 @@
-import { KanbanItem, KanbanStatus } from '../types';
+import { KanbanItem, KanbanStatus, SubTaskItem } from '../types';
 
 declare global {
   interface Window {
@@ -226,7 +226,7 @@ class GoogleTasksDirectService {
     const columnPromises = statuses.map(async (status) => {
       const listInfo = mapping[status];
       const res = await fetch(
-        `https://tasks.googleapis.com/tasks/v1/lists/${listInfo.listId}/tasks?showCompleted=false&showHidden=false&maxResults=100`,
+        `https://tasks.googleapis.com/tasks/v1/lists/${listInfo.listId}/tasks?showCompleted=true&showHidden=false&maxResults=100`,
         { headers: { Authorization: `Bearer ${this.accessToken}` } }
       );
 
@@ -243,23 +243,85 @@ class GoogleTasksDirectService {
       const json = await res.json();
       const rawTasks: any[] = json.items || [];
 
-      const items: KanbanItem[] = rawTasks
-        .filter((t) => t.id && t.title)
-        .map((t, idx) => ({
-          id: t.id,
-          userId: 'google-user',
-          source: 'google_tasks' as const,
-          sourceId: t.id,
-          sourceListId: listInfo.listId,
-          sourceListName: listInfo.title,
-          title: t.title,
-          description: t.notes || null,
-          status,
-          position: (idx + 1) * 1000,
-          dueDate: t.due ? new Date(t.due).toISOString() : null,
-          sourceStatus: t.status || 'needsAction',
-          lastSyncedAt: new Date().toISOString(),
-        }));
+      // Agrupar tareas principales y subtareas
+      const parentTasksMap = new Map<string, KanbanItem>();
+      const subtasksByParent = new Map<string, SubTaskItem[]>();
+      const orphanSubtasks: KanbanItem[] = [];
+
+      rawTasks.forEach((t) => {
+        if (!t.id || !t.title) return;
+
+        if (t.parent) {
+          // Es una subtarea
+          const list = subtasksByParent.get(t.parent) || [];
+          list.push({
+            id: t.id,
+            title: t.title,
+            status: t.status || 'needsAction',
+            completed: t.completed || null,
+          });
+          subtasksByParent.set(t.parent, list);
+        } else {
+          // Es una tarea principal
+          // Si está completada y no estamos en la columna "Terminado", la ignoramos para no ensuciar columnas activas
+          if (status !== 'done' && t.status === 'completed') {
+            return;
+          }
+
+          parentTasksMap.set(t.id, {
+            id: t.id,
+            userId: 'google-user',
+            source: 'google_tasks' as const,
+            sourceId: t.id,
+            sourceListId: listInfo.listId,
+            sourceListName: listInfo.title,
+            title: t.title,
+            description: t.notes || null,
+            status,
+            position: parentTasksMap.size * 1000,
+            dueDate: t.due ? new Date(t.due).toISOString() : null,
+            sourceStatus: t.status || 'needsAction',
+            lastSyncedAt: new Date().toISOString(),
+            parentId: null,
+            subtasks: [],
+          });
+        }
+      });
+
+      // Asociar subtareas a sus padres
+      for (const [parentId, sublist] of subtasksByParent.entries()) {
+        const parentItem = parentTasksMap.get(parentId);
+        if (parentItem) {
+          parentItem.subtasks = sublist;
+        } else {
+          // Si el padre no está presente en esta columna, mostrar como tarjetas individuales
+          sublist.forEach((sub, idx) => {
+            if (status !== 'done' && sub.status === 'completed') return;
+            orphanSubtasks.push({
+              id: sub.id,
+              userId: 'google-user',
+              source: 'google_tasks' as const,
+              sourceId: sub.id,
+              sourceListId: listInfo.listId,
+              sourceListName: listInfo.title,
+              title: sub.title,
+              description: null,
+              status,
+              position: (parentTasksMap.size + idx + 1) * 1000,
+              dueDate: null,
+              sourceStatus: sub.status,
+              lastSyncedAt: new Date().toISOString(),
+              parentId,
+              subtasks: [],
+            });
+          });
+        }
+      }
+
+      const items: KanbanItem[] = [
+        ...Array.from(parentTasksMap.values()),
+        ...orphanSubtasks,
+      ];
 
       return {
         id: status,
@@ -340,7 +402,31 @@ class GoogleTasksDirectService {
 
     const newGoogleTask = await insertRes.json();
 
-    // 2. Eliminar de la lista de origen en Google Tasks
+    // Replicar subtareas bajo el nuevo padre si existen
+    if (task.subtasks && task.subtasks.length > 0) {
+      for (const sub of task.subtasks) {
+        try {
+          await fetch(
+            `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${newGoogleTask.id}`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: sub.title,
+                status: sub.status,
+              }),
+            }
+          );
+        } catch (err) {
+          console.warn('Error replicando subtarea:', err);
+        }
+      }
+    }
+
+    // 2. Eliminar de la lista de origen en Google Tasks (Google Tasks borra recursivamente las subtareas del padre)
     fetch(
       `https://tasks.googleapis.com/tasks/v1/lists/${sourceListId}/tasks/${task.id}`,
       {
@@ -358,6 +444,133 @@ class GoogleTasksDirectService {
       status: targetStatus,
       position: targetPosition,
     };
+  }
+
+  // ==========================================
+  // MARCAR / DESMARCAR SUBTAREA
+  // ==========================================
+
+  public async toggleSubtask(
+    listId: string,
+    subtaskId: string,
+    completed: boolean
+  ): Promise<void> {
+    if (this.mockMode || !this.accessToken) {
+      for (const list of this.mockState.values()) {
+        for (const item of list) {
+          if (item.subtasks) {
+            const sub = item.subtasks.find((s) => s.id === subtaskId);
+            if (sub) {
+              sub.status = completed ? 'completed' : 'needsAction';
+              return;
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${subtaskId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: completed ? 'completed' : 'needsAction',
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(`Error actualizando subtarea: ${res.statusText}`);
+    }
+  }
+
+  // ==========================================
+  // IMPORTAR TAREAS DESDE LISTA DEFAULT ("My Tasks")
+  // ==========================================
+
+  public async importTasksFromDefaultList(): Promise<number> {
+    if (this.mockMode || !this.accessToken) {
+      return 0;
+    }
+
+    const mapping = this.listMapping || (await this.ensureKanbanLists());
+    const todoListId = mapping.todo.listId;
+
+    // Obtener tareas de la lista @default (My Tasks)
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false&showHidden=false&maxResults=100`,
+      { headers: { Authorization: `Bearer ${this.accessToken}` } }
+    );
+
+    if (!res.ok) {
+      throw new Error(`Error consultando lista @default: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    const tasks: any[] = data.items || [];
+    if (tasks.length === 0) return 0;
+
+    let imported = 0;
+    const parentIdMap = new Map<string, string>(); // oldId -> newId
+
+    // 1. Crear primero las tareas principales
+    const parents = tasks.filter((x) => !x.parent && x.title);
+    for (const t of parents) {
+      const createRes = await fetch(
+        `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: t.title,
+            notes: t.notes || undefined,
+            due: t.due || undefined,
+          }),
+        }
+      );
+
+      if (createRes.ok) {
+        const created = await createRes.json();
+        parentIdMap.set(t.id, created.id);
+        imported++;
+      }
+    }
+
+    // 2. Replicar subtareas bajo sus padres
+    const children = tasks.filter((x) => x.parent && x.title);
+    for (const t of children) {
+      const newParentId = parentIdMap.get(t.parent);
+      const url = newParentId
+        ? `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks?parent=${newParentId}`
+        : `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks`;
+
+      const createRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: t.title,
+          notes: t.notes || undefined,
+          status: t.status || 'needsAction',
+        }),
+      });
+
+      if (createRes.ok) {
+        imported++;
+      }
+    }
+
+    return imported;
   }
 
   // ==========================================
@@ -493,6 +706,11 @@ class GoogleTasksDirectService {
         position: 2000,
         dueDate: nextWeek.toISOString(),
         lastSyncedAt: today.toISOString(),
+        subtasks: [
+          { id: 'mock-sub-1', title: 'Diagramas de flujo multi-dispositivo', status: 'completed' },
+          { id: 'mock-sub-2', title: 'Métricas de rendimiento e impacto Zero-DB', status: 'needsAction' },
+          { id: 'mock-sub-3', title: 'Demo interactiva para reclutadores', status: 'needsAction' },
+        ],
       },
       {
         id: 'mock-keep-1',
@@ -522,6 +740,11 @@ class GoogleTasksDirectService {
         position: 1000,
         dueDate: tomorrow.toISOString(),
         lastSyncedAt: today.toISOString(),
+        subtasks: [
+          { id: 'mock-sub-4', title: 'Integración Google Identity Services OAuth 2.0', status: 'completed' },
+          { id: 'mock-sub-5', title: 'Mapeo reactivo de 4 listas TaskLists', status: 'completed' },
+          { id: 'mock-sub-6', title: 'Sincronización de subtareas y checklists', status: 'completed' },
+        ],
       },
     ]);
 

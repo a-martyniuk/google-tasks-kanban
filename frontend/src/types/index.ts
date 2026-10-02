@@ -1,5 +1,12 @@
 export type KanbanStatus = 'todo' | 'in_progress' | 'review' | 'done';
 
+export interface SubTaskItem {
+  id: string;
+  title: string;
+  status: 'needsAction' | 'completed';
+  completed?: string | null;
+}
+
 export interface KanbanItem {
   id: string;
   userId: string;
@@ -18,6 +25,8 @@ export interface KanbanItem {
   lastSyncedAt: string;
   createdAt?: string;
   updatedAt?: string;
+  parentId?: string | null;
+  subtasks?: SubTaskItem[];
 }
 
 export interface KanbanColumn {

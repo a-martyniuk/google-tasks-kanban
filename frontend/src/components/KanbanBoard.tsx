@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
-import { KanbanColumn as KanbanColumnType, KanbanItem, KanbanStatus } from '../types';
+import { KanbanColumn as KanbanColumnType, KanbanItem, KanbanStatus, SubTaskItem } from '../types';
 import { KanbanColumn } from './KanbanColumn';
 
 interface KanbanBoardProps {
@@ -9,6 +9,7 @@ interface KanbanBoardProps {
   onMoveTask: (task: KanbanItem, targetStatus: KanbanStatus, targetPosition: number) => Promise<void>;
   onAddTask?: (status: KanbanStatus, title: string, description?: string) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
+  onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -17,6 +18,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onMoveTask,
   onAddTask,
   onDeleteTask,
+  onToggleSubtask,
 }) => {
   const [columns, setColumns] = useState<KanbanColumnType[]>(initialColumns);
 
@@ -120,6 +122,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             column={column}
             onAddTask={onAddTask}
             onDeleteTask={onDeleteTask}
+            onToggleSubtask={onToggleSubtask}
           />
         ))}
       </div>
