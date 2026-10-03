@@ -161,7 +161,7 @@ class GoogleTasksDirectService {
         },
       });
 
-      this.tokenClient.requestAccessToken({ prompt: 'consent' });
+      this.tokenClient.requestAccessToken({ prompt: '' });
     });
   }
 
@@ -255,6 +255,56 @@ class GoogleTasksDirectService {
   }
 
   // ==========================================
+  // CONSULTA PAGINADA DE TAREAS (SOPORTE >100 TAREAS)
+  // ==========================================
+
+  private async fetchAllTasksFromList(
+    listId: string,
+    params: { showCompleted?: boolean; showHidden?: boolean } = {}
+  ): Promise<any[]> {
+    if (this.mockMode || !this.accessToken) {
+      return [];
+    }
+
+    const allTasks: any[] = [];
+    let pageToken: string | undefined = undefined;
+
+    do {
+      const url = new URL(`https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks`);
+      url.searchParams.set('maxResults', '100');
+      if (params.showCompleted !== undefined) {
+        url.searchParams.set('showCompleted', String(params.showCompleted));
+      }
+      if (params.showHidden !== undefined) {
+        url.searchParams.set('showHidden', String(params.showHidden));
+      }
+      if (pageToken) {
+        url.searchParams.set('pageToken', pageToken);
+      }
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${this.accessToken}` },
+      });
+
+      if (res.status === 401) {
+        this.handleTokenExpired();
+      }
+
+      if (!res.ok) {
+        console.warn(`Error al consultar tareas de ${listId}: ${res.statusText}`);
+        break;
+      }
+
+      const json = await res.json();
+      const items = json.items || [];
+      allTasks.push(...items);
+      pageToken = json.nextPageToken;
+    } while (pageToken);
+
+    return allTasks;
+  }
+
+  // ==========================================
   // OBTENER TABLERO COMPLETO
   // ==========================================
 
@@ -288,27 +338,10 @@ class GoogleTasksDirectService {
 
     const columnPromises = statuses.map(async (status) => {
       const listInfo = mapping[status];
-      const res = await fetch(
-        `https://tasks.googleapis.com/tasks/v1/lists/${listInfo.listId}/tasks?showCompleted=true&showHidden=true&maxResults=100`,
-        { headers: { Authorization: `Bearer ${this.accessToken}` } }
-      );
-
-      if (res.status === 401) {
-        this.handleTokenExpired();
-      }
-
-      if (!res.ok) {
-        console.warn(`Error al obtener tareas de ${listInfo.title}`);
-        return {
-          id: status,
-          title: listInfo.title,
-          listId: listInfo.listId,
-          items: [] as KanbanItem[],
-        };
-      }
-
-      const json = await res.json();
-      const rawTasks: any[] = json.items || [];
+      const rawTasks = await this.fetchAllTasksFromList(listInfo.listId, {
+        showCompleted: true,
+        showHidden: true,
+      });
 
       // Agrupar tareas principales y subtareas
       const parentTasksMap = new Map<string, KanbanItem>();
@@ -316,7 +349,7 @@ class GoogleTasksDirectService {
       const orphanSubtasks: KanbanItem[] = [];
 
       rawTasks.forEach((t) => {
-        if (!t.id || !t.title) return;
+        if (!t.id || !t.title || t.deleted) return;
 
         if (t.parent) {
           // Es una subtarea
@@ -341,7 +374,7 @@ class GoogleTasksDirectService {
             description: t.notes || null,
             status,
             position: parentTasksMap.size * 1000,
-            dueDate: t.due ? new Date(t.due).toISOString() : null,
+            dueDate: t.due || null,
             sourceStatus: t.status || 'needsAction',
             lastSyncedAt: new Date().toISOString(),
             parentId: null,
@@ -412,57 +445,53 @@ class GoogleTasksDirectService {
 
         for (const extraId of extraListIds) {
           try {
-            const extraRes = await fetch(
-              `https://tasks.googleapis.com/tasks/v1/lists/${extraId}/tasks?showCompleted=false&showHidden=true&maxResults=100`,
-              { headers: { Authorization: `Bearer ${this.accessToken}` } }
-            );
-            if (extraRes.ok) {
-              const extraJson = await extraRes.json();
-              const extraTasks: any[] = extraJson.items || [];
-              const extraParents = new Map<string, KanbanItem>();
-              const extraSubtasks = new Map<string, SubTaskItem[]>();
+            const extraTasks = await this.fetchAllTasksFromList(extraId, {
+              showCompleted: false,
+              showHidden: true,
+            });
+            const extraParents = new Map<string, KanbanItem>();
+            const extraSubtasks = new Map<string, SubTaskItem[]>();
 
-              extraTasks.forEach((t) => {
-                if (!t.id || !t.title || t.deleted) return;
-                if (t.parent) {
-                  const list = extraSubtasks.get(t.parent) || [];
-                  list.push({
-                    id: t.id,
-                    title: t.title,
-                    status: t.status || 'needsAction',
-                    completed: t.completed || null,
-                  });
-                  extraSubtasks.set(t.parent, list);
-                } else {
-                  extraParents.set(t.id, {
-                    id: t.id,
-                    userId: 'google-user',
-                    source: 'google_tasks' as const,
-                    sourceId: t.id,
-                    sourceListId: extraId,
-                    sourceListName: listNamesMap.get(extraId) || 'Lista sincronizada',
-                    title: t.title,
-                    description: t.notes || null,
-                    status: 'todo',
-                    position: (todoCol.items.length + extraParents.size) * 1000,
-                    dueDate: t.due ? new Date(t.due).toISOString() : null,
-                    sourceStatus: t.status || 'needsAction',
-                    lastSyncedAt: new Date().toISOString(),
-                    parentId: null,
-                    subtasks: [],
-                  });
-                }
-              });
-
-              for (const [pId, subs] of extraSubtasks.entries()) {
-                const parent = extraParents.get(pId);
-                if (parent) {
-                  parent.subtasks = subs;
-                }
+            extraTasks.forEach((t) => {
+              if (!t.id || !t.title || t.deleted) return;
+              if (t.parent) {
+                const list = extraSubtasks.get(t.parent) || [];
+                list.push({
+                  id: t.id,
+                  title: t.title,
+                  status: t.status || 'needsAction',
+                  completed: t.completed || null,
+                });
+                extraSubtasks.set(t.parent, list);
+              } else {
+                extraParents.set(t.id, {
+                  id: t.id,
+                  userId: 'google-user',
+                  source: 'google_tasks' as const,
+                  sourceId: t.id,
+                  sourceListId: extraId,
+                  sourceListName: listNamesMap.get(extraId) || 'Lista sincronizada',
+                  title: t.title,
+                  description: t.notes || null,
+                  status: 'todo',
+                  position: (todoCol.items.length + extraParents.size) * 1000,
+                  dueDate: t.due || null,
+                  sourceStatus: t.status || 'needsAction',
+                  lastSyncedAt: new Date().toISOString(),
+                  parentId: null,
+                  subtasks: [],
+                });
               }
+            });
 
-              todoCol.items.push(...Array.from(extraParents.values()));
+            for (const [pId, subs] of extraSubtasks.entries()) {
+              const parent = extraParents.get(pId);
+              if (parent) {
+                parent.subtasks = subs;
+              }
             }
+
+            todoCol.items.push(...Array.from(extraParents.values()));
           } catch (err) {
             console.warn(`Error al consultar lista extra ${extraId}:`, err);
           }
@@ -721,7 +750,11 @@ class GoogleTasksDirectService {
     if (updates.title !== undefined) body.title = updates.title;
     if (updates.description !== undefined) body.notes = updates.description || '';
     if (updates.dueDate !== undefined) {
-      body.due = updates.dueDate ? new Date(updates.dueDate).toISOString() : null;
+      body.due = updates.dueDate
+        ? updates.dueDate.includes('T')
+          ? updates.dueDate
+          : `${updates.dueDate}T00:00:00.000Z`
+        : null;
     }
 
     const res = await fetch(
@@ -848,29 +881,18 @@ class GoogleTasksDirectService {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
     const todoListId = mapping.todo.listId;
 
-    // Obtener tareas de la lista @default (My Tasks)
-    const res = await fetch(
-      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=true&showHidden=true&maxResults=100`,
-      { headers: { Authorization: `Bearer ${this.accessToken}` } }
-    );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
-
-    if (!res.ok) {
-      throw new Error(`Error consultando lista @default: ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    const tasks: any[] = data.items || [];
+    // Obtener tareas de la lista @default (My Tasks) con paginación completa
+    const tasks = await this.fetchAllTasksFromList('@default', {
+      showCompleted: true,
+      showHidden: true,
+    });
     if (tasks.length === 0) return 0;
 
     let imported = 0;
     const parentIdMap = new Map<string, string>(); // oldId -> newId
 
     // 1. Crear primero las tareas principales
-    const parents = tasks.filter((x) => !x.parent && x.title);
+    const parents = tasks.filter((x) => !x.parent && x.title && !x.deleted);
     for (const t of parents) {
       const createRes = await fetch(
         `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks`,
@@ -896,7 +918,7 @@ class GoogleTasksDirectService {
     }
 
     // 2. Replicar subtareas bajo sus padres
-    const children = tasks.filter((x) => x.parent && x.title);
+    const children = tasks.filter((x) => x.parent && x.title && !x.deleted);
     for (const t of children) {
       const newParentId = parentIdMap.get(t.parent);
       const url = newParentId
@@ -967,7 +989,11 @@ class GoogleTasksDirectService {
       body: JSON.stringify({
         title,
         notes: description || undefined,
-        due: dueDate ? new Date(dueDate).toISOString() : undefined,
+        due: dueDate
+          ? dueDate.includes('T')
+            ? dueDate
+            : `${dueDate}T00:00:00.000Z`
+          : undefined,
       }),
     });
 

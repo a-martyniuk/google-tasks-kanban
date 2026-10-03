@@ -98,20 +98,32 @@ export const App: React.FC = () => {
     };
   }, [isSyncing, loadBoard]);
 
-  // Filtrado reactivo de tarjetas por búsqueda
+  const normalizeText = (text: string): string => {
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  };
+
+  // Filtrado reactivo de tarjetas por búsqueda (insensible a mayúsculas y acentos)
   const filteredColumns = useMemo(() => {
     if (!searchQuery.trim()) return columns;
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeText(searchQuery);
     return columns.map((col) => ({
       ...col,
       items: col.items.filter(
         (item) =>
-          item.title.toLowerCase().includes(q) ||
-          (item.description && item.description.toLowerCase().includes(q)) ||
-          (item.subtasks && item.subtasks.some((s) => s.title.toLowerCase().includes(q)))
+          normalizeText(item.title).includes(q) ||
+          (item.description && normalizeText(item.description).includes(q)) ||
+          (item.subtasks && item.subtasks.some((s) => normalizeText(s.title).includes(q)))
       ),
     }));
   }, [columns, searchQuery]);
+
+  const searchMatchingCount = useMemo(() => {
+    return filteredColumns.reduce((acc, col) => acc + col.items.length, 0);
+  }, [filteredColumns]);
 
   // Sincronizar manualmente
   const handleManualSync = async () => {
@@ -483,6 +495,9 @@ export const App: React.FC = () => {
                     placeholder="Filtrar tareas..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setSearchQuery('');
+                    }}
                     className="pl-8 pr-7 py-1.5 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 sm:w-48 text-slate-700 shadow-2xs"
                   />
                   {searchQuery && (
@@ -510,11 +525,34 @@ export const App: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span>
-                    <strong className="text-slate-800">{totalCount}</strong> tareas sincronizadas
+                    {searchQuery.trim() ? (
+                      <>
+                        <strong className="text-slate-800">{searchMatchingCount}</strong> de {totalCount} tareas
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-slate-800">{totalCount}</strong> tareas sincronizadas
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
             </div>
+
+            {/* Banner de búsqueda sin coincidencias */}
+            {searchQuery.trim() && searchMatchingCount === 0 && (
+              <div className="mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between text-xs animate-in fade-in">
+                <span>
+                  No se encontraron tareas ni subtareas que coincidan con "<strong>{searchQuery}</strong>".
+                </span>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="font-semibold text-amber-800 underline hover:text-amber-950 cursor-pointer"
+                >
+                  Limpiar filtro
+                </button>
+              </div>
+            )}
 
             <div className="flex-1">
               <KanbanBoard

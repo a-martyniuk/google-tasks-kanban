@@ -70,7 +70,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onAddTask(column.id, newTitle.trim(), newNotes.trim() || undefined, newDueDate || null);
+      const formattedDate = newDueDate ? `${newDueDate}T00:00:00.000Z` : null;
+      await onAddTask(column.id, newTitle.trim(), newNotes.trim() || undefined, formattedDate);
       setNewTitle('');
       setNewNotes('');
       setNewDueDate('');
@@ -108,7 +109,18 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
       {/* Formulario rápido de creación */}
       {isAdding && (
-        <form onSubmit={handleCreate} className="mb-3 bg-white p-3 rounded-xl border border-slate-300 shadow-xs space-y-2 animate-in fade-in">
+        <form
+          onSubmit={handleCreate}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsAdding(false);
+              setNewTitle('');
+              setNewNotes('');
+              setNewDueDate('');
+            }
+          }}
+          className="mb-3 bg-white p-3 rounded-xl border border-slate-300 shadow-xs space-y-2 animate-in fade-in"
+        >
           <input
             type="text"
             placeholder="Título de la tarea..."
@@ -122,6 +134,12 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             rows={2}
             value={newNotes}
             onChange={(e) => setNewNotes(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                handleCreate(e);
+              }
+            }}
             className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
           />
           <div className="flex items-center justify-between text-xs pt-0.5">

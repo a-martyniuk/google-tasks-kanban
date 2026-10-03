@@ -60,16 +60,22 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
   const formatDueDate = (dateString?: string | null) => {
     if (!dateString) return null;
-    const date = new Date(dateString);
+    const parts = dateString.split('T')[0].split('-');
+    if (parts.length < 3) return null;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+
+    const dueDateClean = new Date(y, m, d);
+    dueDateClean.setHours(0, 0, 0, 0);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const dueDateClean = new Date(date);
-    dueDateClean.setHours(0, 0, 0, 0);
 
     const isOverdue = dueDateClean < today;
     const isToday = dueDateClean.getTime() === today.getTime();
 
-    const formatted = date.toLocaleDateString('es-ES', {
+    const formatted = dueDateClean.toLocaleDateString('es-ES', {
       day: '2-digit',
       month: 'short',
     });
@@ -78,6 +84,28 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   const due = formatDueDate(item.dueDate);
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim() || !onUpdateTask) return;
+    setIsSaving(true);
+    try {
+      await onUpdateTask(item, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        dueDate: editDueDate ? `${editDueDate}T00:00:00.000Z` : null,
+      });
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditTitle(item.title);
+    setEditDescription(item.description || '');
+    setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
+  };
 
   if (isEditing) {
     return (
@@ -91,19 +119,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             }`}
           >
             <form
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                if (!editTitle.trim() || !onUpdateTask) return;
-                setIsSaving(true);
-                try {
-                  await onUpdateTask(item, {
-                    title: editTitle.trim(),
-                    description: editDescription.trim() || null,
-                    dueDate: editDueDate ? new Date(editDueDate).toISOString() : null,
-                  });
-                  setIsEditing(false);
-                } finally {
-                  setIsSaving(false);
+                handleSaveEdit();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  handleCancelEdit();
                 }
               }}
               className="space-y-2.5"
@@ -113,12 +136,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 <span className="text-xs font-bold text-blue-600">Editar tarea</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditTitle(item.title);
-                    setEditDescription(item.description || '');
-                    setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
-                  }}
+                  onClick={handleCancelEdit}
                   className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -143,8 +161,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                   rows={2}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      handleSaveEdit();
+                    }
+                  }}
                   className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
-                  placeholder="Notas u observaciones..."
+                  placeholder="Notas u observaciones... (Ctrl+Enter para guardar)"
                 />
               </div>
 
@@ -161,12 +185,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               <div className="flex items-center justify-end gap-1.5 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditTitle(item.title);
-                    setEditDescription(item.description || '');
-                    setEditDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
-                  }}
+                  onClick={handleCancelEdit}
                   className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-800 rounded-lg border border-slate-200 cursor-pointer"
                 >
                   Cancelar
@@ -395,6 +414,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                         autoFocus
                         value={newSubtaskTitle}
                         onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setShowAddSubtask(false);
+                        }}
                         className="flex-1 text-xs px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                       <button
@@ -454,6 +476,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                       autoFocus
                       value={newSubtaskTitle}
                       onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setShowAddSubtask(false);
+                      }}
                       className="flex-1 text-xs px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <button

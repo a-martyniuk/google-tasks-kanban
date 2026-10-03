@@ -36,14 +36,17 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     if (items.length <= 1) return 1000;
     if (targetIndex === 0) {
       const nextPos = items[1]?.position || 2000;
-      return nextPos / 2;
+      return nextPos > 0 ? nextPos / 2 : 1000;
     }
     if (targetIndex === items.length - 1) {
       const prevPos = items[items.length - 2]?.position || 1000;
       return prevPos + 1000;
     }
     const prevPos = items[targetIndex - 1]?.position || 0;
-    const nextPos = items[targetIndex + 1]?.position || prevPos + 2000;
+    let nextPos = items[targetIndex + 1]?.position || prevPos + 2000;
+    if (nextPos <= prevPos) {
+      nextPos = prevPos + 2000;
+    }
     return (prevPos + nextPos) / 2;
   };
 
