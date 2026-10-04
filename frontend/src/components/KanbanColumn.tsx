@@ -191,6 +191,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 key={item.id}
                 item={item}
                 index={index}
+                columnTitle={column.title}
                 onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
                 onToggleSubtask={onToggleSubtask}
                 onAddSubtask={onAddSubtask}
