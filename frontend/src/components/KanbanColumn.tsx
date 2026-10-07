@@ -2,10 +2,17 @@ import React, { useState } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import { KanbanColumn as KanbanColumnType, KanbanItem, SubTaskItem } from '../types';
 import { KanbanCard } from './KanbanCard';
-import { Plus, X, Check } from 'lucide-react';
+import { Plus, X, Check, ArrowUpFromLine } from 'lucide-react';
+import { PROMOTE_DROP_PREFIX, SUBTASK_DND_TYPE } from './dndIds';
 
 interface KanbanColumnProps {
   column: KanbanColumnType;
+  /** true mientras se arrastra una subtarea: muestra la zona "convertir en tarea" */
+  isDraggingSubtask?: boolean;
+  /** Permite soltar una tarjeta sobre otra para convertirla en subtarea */
+  canNest?: boolean;
+  /** Permite soltar subtareas en la columna para convertirlas en tarea */
+  canPromote?: boolean;
   onAddTask?: (status: KanbanColumnType['id'], title: string, description?: string, dueDate?: string | null) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
@@ -50,6 +57,9 @@ const COLUMN_THEMES: Record<
 
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   column,
+  isDraggingSubtask = false,
+  canNest = false,
+  canPromote = false,
   onAddTask,
   onDeleteTask,
   onToggleSubtask,
@@ -106,6 +116,35 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
           )}
         </div>
       </div>
+
+      {/* Zona para soltar una subtarea y convertirla en tarea de esta columna */}
+      {canPromote && (
+        <Droppable
+          droppableId={`${PROMOTE_DROP_PREFIX}${column.id}`}
+          type={SUBTASK_DND_TYPE}
+        >
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={
+                isDraggingSubtask
+                  ? `mb-2 rounded-lg border-2 border-dashed px-3 py-2.5 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                      snapshot.isDraggingOver
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-slate-300 bg-white/60 text-slate-500'
+                    }`
+                  : 'hidden'
+              }
+            >
+              <ArrowUpFromLine className="w-3.5 h-3.5 shrink-0" />
+              <span>Soltar para convertir en tarea</span>
+              {/* El placeholder se oculta para que la zona no cambie de tamaño */}
+              <div className="hidden">{provided.placeholder}</div>
+            </div>
+          )}
+        </Droppable>
+      )}
 
       {/* Formulario rápido de creación */}
       {isAdding && (
@@ -177,7 +216,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       )}
 
       {/* Contenedor Droppable */}
-      <Droppable droppableId={column.id}>
+      <Droppable droppableId={column.id} isCombineEnabled={canNest}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}

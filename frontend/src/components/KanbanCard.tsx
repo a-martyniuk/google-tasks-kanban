@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Draggable } from '@hello-pangea/dnd';
+import { Draggable, Droppable } from '@hello-pangea/dnd';
 import {
   Calendar,
   ChevronDown,
@@ -10,8 +10,10 @@ import {
   Pencil,
   Check,
   X,
+  GripVertical,
 } from 'lucide-react';
 import { KanbanItem, SubTaskItem } from '../types';
+import { SUBTASK_DND_TYPE, SUBTASK_DRAG_PREFIX, SUBLIST_DROP_PREFIX } from './dndIds';
 
 interface KanbanCardProps {
   item: KanbanItem;
@@ -243,9 +245,18 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           className={`group relative bg-white rounded-lg px-3 py-2 mb-2 border transition-all duration-150 select-none ${
             snapshot.isDragging
               ? 'border-blue-500 shadow-xl ring-2 ring-blue-500/20 scale-[1.02] cursor-grabbing rotate-1'
+              : snapshot.combineTargetFor
+              ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-400 ring-dashed'
               : 'border-slate-200/80 shadow-xs hover:border-slate-300 hover:shadow-sm cursor-grab'
           }`}
         >
+          {/* Indicador visual cuando otra tarjeta se arrastra sobre esta para anidar */}
+          {snapshot.combineTargetFor && (
+            <div className="mb-1.5 px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold tracking-wide flex items-center justify-center gap-1 shadow-xs animate-in fade-in duration-150">
+              <span>Soltar para anidar como subtarea ↳</span>
+            </div>
+          )}
+
           {/* Acciones flotantes (no ocupan espacio en el layout) */}
           <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-white/95 shadow-sm ring-1 ring-slate-200/70 px-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity">
             {onAddSubtask && (
@@ -386,59 +397,101 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </div>
           )}
 
-          {/* Lista de subtareas (colapsable) */}
+          {/* Lista de subtareas (colapsable y arrastrable) */}
           {subtasksOpen && subtasks.length > 0 && (
-            <div className="mt-1.5 pt-1.5 border-t border-slate-100 space-y-0.5">
-              {subtasks.map((sub) => {
-                const isDone = sub.status === 'completed';
-                return (
-                  <div
-                    key={sub.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onToggleSubtask) {
-                        onToggleSubtask(item, sub);
-                      }
-                    }}
-                    className="flex items-start justify-between gap-2 text-xs px-1 py-0.5 rounded hover:bg-slate-50 cursor-pointer transition-colors group/sub"
-                  >
-                    <div className="flex items-start gap-1.5 flex-1 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={isDone}
-                        onChange={() => {}}
-                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
-                      />
-                      <span
-                        className={`leading-snug transition-all break-words ${
-                          isDone
-                            ? 'line-through text-slate-400'
-                            : 'text-slate-700 group-hover/sub:text-slate-900'
-                        }`}
+            <Droppable
+              droppableId={`${SUBLIST_DROP_PREFIX}${item.id}`}
+              type={SUBTASK_DND_TYPE}
+            >
+              {(subDropProvided, subDropSnapshot) => (
+                <div
+                  ref={subDropProvided.innerRef}
+                  {...subDropProvided.droppableProps}
+                  className={`mt-1.5 pt-1.5 border-t border-slate-100 space-y-0.5 rounded transition-colors ${
+                    subDropSnapshot.isDraggingOver
+                      ? 'bg-blue-50/60 ring-1 ring-blue-300 ring-dashed p-1'
+                      : ''
+                  }`}
+                >
+                  {subtasks.map((sub, subIndex) => {
+                    const isDone = sub.status === 'completed';
+                    return (
+                      <Draggable
+                        key={sub.id}
+                        draggableId={`${SUBTASK_DRAG_PREFIX}${sub.id}`}
+                        index={subIndex}
                       >
-                        {sub.title}
-                      </span>
-                    </div>
+                        {(subDragProvided, subDragSnapshot) => (
+                          <div
+                            ref={subDragProvided.innerRef}
+                            {...subDragProvided.draggableProps}
+                            className={`flex items-start justify-between gap-1.5 text-xs px-1 py-0.5 rounded transition-colors group/sub ${
+                              subDragSnapshot.isDragging
+                                ? 'bg-white shadow-lg ring-1 ring-blue-500/50 rounded z-50'
+                                : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-1 flex-1 min-w-0">
+                              <span
+                                {...subDragProvided.dragHandleProps}
+                                className="p-0.5 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0 mt-0.5"
+                                title="Arrastrar para reordenar, mover a otra tarea o soltar en una columna para convertir en tarea principal"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <GripVertical className="w-3 h-3" />
+                              </span>
 
-                    {onDeleteSubtask && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`¿Eliminar subtarea "${sub.title}"?`)) {
-                            onDeleteSubtask(item, sub);
-                          }
-                        }}
-                        className="opacity-0 group-hover/sub:opacity-100 p-0.5 text-slate-300 hover:text-rose-500 rounded transition-opacity shrink-0 cursor-pointer"
-                        title="Eliminar subtarea"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onToggleSubtask) {
+                                    onToggleSubtask(item, sub);
+                                  }
+                                }}
+                                className="flex items-start gap-1.5 flex-1 min-w-0 cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isDone}
+                                  onChange={() => {}}
+                                  className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
+                                />
+                                <span
+                                  className={`leading-snug transition-all break-words ${
+                                    isDone
+                                      ? 'line-through text-slate-400'
+                                      : 'text-slate-700 group-hover/sub:text-slate-900'
+                                  }`}
+                                >
+                                  {sub.title}
+                                </span>
+                              </div>
+                            </div>
+
+                            {onDeleteSubtask && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`¿Eliminar subtarea "${sub.title}"?`)) {
+                                    onDeleteSubtask(item, sub);
+                                  }
+                                }}
+                                className="opacity-0 group-hover/sub:opacity-100 p-0.5 text-slate-300 hover:text-rose-500 rounded transition-opacity shrink-0 cursor-pointer"
+                                title="Eliminar subtarea"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </Draggable>
+                    );
+                  })}
+                  {subDropProvided.placeholder}
+                </div>
+              )}
+            </Droppable>
           )}
 
           {/* Formulario para añadir subtarea (solo visible bajo demanda) */}

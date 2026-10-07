@@ -669,6 +669,243 @@ class GoogleTasksDirectService {
   }
 
   // ==========================================
+  // JERARQUÍA: ANIDAR / DESANIDAR TAREAS (tasks.move)
+  // ==========================================
+
+  /**
+   * Envuelve el endpoint tasks.move de Google Tasks. Conserva ID, notas, fecha y estado.
+   * `destinationTasklist` permite cambiar de lista (no soportado para tareas recurrentes).
+   */
+  private async moveGoogleTask(
+    listId: string,
+    taskId: string,
+    opts: { parent?: string | null; previous?: string | null; destinationTasklist?: string | null } = {}
+  ): Promise<any> {
+    const url = new URL(`https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${taskId}/move`);
+    if (opts.parent) url.searchParams.set('parent', opts.parent);
+    if (opts.previous) url.searchParams.set('previous', opts.previous);
+    if (opts.destinationTasklist && opts.destinationTasklist !== listId) {
+      url.searchParams.set('destinationTasklist', opts.destinationTasklist);
+    }
+
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const errJson = await res.json();
+        detail = errJson?.error?.message || detail;
+      } catch {}
+      throw new Error(`Google Tasks rechazó el movimiento: ${detail}`);
+    }
+
+    return res.json();
+  }
+
+  private async resolveListId(item: KanbanItem): Promise<string> {
+    const mapping = this.listMapping || (await this.ensureKanbanLists());
+    return item.sourceListId || mapping[item.status].listId;
+  }
+
+  private findMockItem(id: string): KanbanItem | undefined {
+    for (const list of this.mockState.values()) {
+      const found = list.find((t) => t.id === id);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  /**
+   * Convierte `task` en subtarea de `parent`.
+   * Como Google Tasks admite un solo nivel, las subtareas de `task` pasan a ser
+   * subtareas hermanas dentro de `parent` (ubicadas a continuación de `task`).
+   * Devuelve las subtareas a agregar al final de `parent`, en orden.
+   */
+  public async nestTaskUnder(task: KanbanItem, parent: KanbanItem): Promise<SubTaskItem[]> {
+    if (task.id === parent.id) {
+      throw new Error('Una tarea no puede ser subtarea de sí misma.');
+    }
+    if (parent.parentId) {
+      throw new Error('No se puede anidar dentro de una subtarea: Google Tasks admite un solo nivel.');
+    }
+
+    const taskAsSub = (id: string, data?: any): SubTaskItem => ({
+      id,
+      title: data?.title || task.title,
+      status:
+        (data?.status as SubTaskItem['status']) ||
+        (task.sourceStatus === 'completed' ? 'completed' : 'needsAction'),
+      completed: data?.completed || null,
+    });
+    const children = (task.subtasks || []).filter((s) => !s.id.startsWith('temp-'));
+
+    if (this.mockMode || !this.accessToken) {
+      const srcList = this.mockState.get(task.status) || [];
+      this.mockState.set(task.status, srcList.filter((t) => t.id !== task.id));
+      const result = [taskAsSub(task.id), ...children];
+      const mockParent = this.findMockItem(parent.id);
+      if (mockParent) {
+        mockParent.subtasks = [...(mockParent.subtasks || []), ...result];
+      }
+      return result;
+    }
+
+    const srcListId = await this.resolveListId(task);
+    const destListId = await this.resolveListId(parent);
+    const lastExisting = [...(parent.subtasks || [])].reverse().find((s) => !s.id.startsWith('temp-'));
+    const anchor = lastExisting?.id || null;
+
+    // 1. Mover primero las subtareas propias (Google no permite mover una tarea con hijos bajo otro padre)
+    const movedChildren: SubTaskItem[] = [];
+    let prev = anchor;
+    for (const child of children) {
+      const moved = await this.moveGoogleTask(srcListId, child.id, {
+        parent: parent.id,
+        previous: prev,
+        destinationTasklist: destListId,
+      });
+      const newId = moved?.id || child.id;
+      movedChildren.push({
+        ...child,
+        id: newId,
+        status: (moved?.status as SubTaskItem['status']) || child.status,
+        completed: moved?.completed ?? child.completed ?? null,
+      });
+      prev = newId;
+    }
+
+    // 2. Mover la tarea (ya sin hijos) justo después de la última subtarea original del padre
+    const movedTask = await this.moveGoogleTask(srcListId, task.id, {
+      parent: parent.id,
+      previous: anchor,
+      destinationTasklist: destListId,
+    });
+
+    return [taskAsSub(movedTask?.id || task.id, movedTask), ...movedChildren];
+  }
+
+  /**
+   * Convierte una subtarea en tarea principal, ubicándola al inicio de la columna destino.
+   */
+  public async promoteSubtask(
+    sub: SubTaskItem,
+    parent: KanbanItem,
+    targetStatus: KanbanStatus
+  ): Promise<KanbanItem> {
+    const mapping = this.listMapping || (await this.ensureKanbanLists());
+    const buildItem = (data: any, listId?: string): KanbanItem => ({
+      id: data?.id || sub.id,
+      userId: parent.userId,
+      source: 'google_tasks',
+      sourceId: data?.id || sub.id,
+      sourceListId: listId,
+      sourceListName: mapping[targetStatus].title,
+      title: data?.title || sub.title,
+      description: data?.notes || null,
+      status: targetStatus,
+      position: 0,
+      dueDate: data?.due ? new Date(data.due).toISOString() : null,
+      sourceStatus: data?.status || sub.status,
+      lastSyncedAt: new Date().toISOString(),
+      parentId: null,
+      subtasks: [],
+    });
+
+    if (this.mockMode || !this.accessToken) {
+      const mockParent = this.findMockItem(parent.id);
+      if (mockParent) {
+        mockParent.subtasks = (mockParent.subtasks || []).filter((s) => s.id !== sub.id);
+      }
+      const newItem = buildItem(null, mapping[targetStatus].listId);
+      const list = this.mockState.get(targetStatus) || [];
+      this.mockState.set(targetStatus, [newItem, ...list]);
+      return newItem;
+    }
+
+    const srcListId = await this.resolveListId(parent);
+    const destListId = mapping[targetStatus].listId;
+
+    // Sin `parent` => pasa a ser tarea de primer nivel; sin `previous` => queda primera en la lista
+    const moved = await this.moveGoogleTask(srcListId, sub.id, {
+      destinationTasklist: destListId,
+    });
+
+    const settings = this.getSettings();
+    if (targetStatus === 'done' && settings.completeInSourceOnDone && moved?.status !== 'completed') {
+      try {
+        const patchRes = await fetch(
+          `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${moved?.id || sub.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: 'completed' }),
+          }
+        );
+        if (patchRes.ok) {
+          return buildItem(await patchRes.json(), destListId);
+        }
+      } catch (err) {
+        console.warn('Error marcando como completada la subtarea promovida:', err);
+      }
+    }
+
+    return buildItem(moved, destListId);
+  }
+
+  /**
+   * Mueve una subtarea a otra tarjeta (o la reordena dentro de la misma).
+   * `previousId` es la subtarea que quedará inmediatamente antes (null = primera).
+   */
+  public async moveSubtaskToParent(
+    sub: SubTaskItem,
+    fromParent: KanbanItem,
+    toParent: KanbanItem,
+    previousId: string | null
+  ): Promise<SubTaskItem> {
+    if (toParent.parentId) {
+      throw new Error('No se puede anidar dentro de una subtarea: Google Tasks admite un solo nivel.');
+    }
+
+    if (this.mockMode || !this.accessToken) {
+      const from = this.findMockItem(fromParent.id);
+      if (from) from.subtasks = (from.subtasks || []).filter((s) => s.id !== sub.id);
+      const to = this.findMockItem(toParent.id);
+      if (to) {
+        const list = [...(to.subtasks || [])];
+        const idx = previousId ? list.findIndex((s) => s.id === previousId) + 1 : 0;
+        list.splice(idx, 0, sub);
+        to.subtasks = list;
+      }
+      return sub;
+    }
+
+    const srcListId = await this.resolveListId(fromParent);
+    const destListId = await this.resolveListId(toParent);
+    const moved = await this.moveGoogleTask(srcListId, sub.id, {
+      parent: toParent.id,
+      previous: previousId && !previousId.startsWith('temp-') ? previousId : null,
+      destinationTasklist: destListId,
+    });
+
+    return {
+      ...sub,
+      id: moved?.id || sub.id,
+      status: (moved?.status as SubTaskItem['status']) || sub.status,
+      completed: moved?.completed ?? sub.completed ?? null,
+    };
+  }
+
+  // ==========================================
   // CREAR SUBTAREA EN GOOGLE TASKS
   // ==========================================
 

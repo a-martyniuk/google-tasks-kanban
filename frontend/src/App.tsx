@@ -365,6 +365,96 @@ export const App: React.FC = () => {
     }
   };
 
+  // Convertir una tarea en subtarea de otra (sus subtareas pasan a ser hermanas)
+  const handleNestTask = async (task: KanbanItem, parent: KanbanItem) => {
+    try {
+      const newSubs = await googleTasksDirect.nestTaskUnder(task, parent);
+      setColumns((prev) =>
+        prev.map((col) => ({
+          ...col,
+          items: col.items
+            .filter((i) => i.id !== task.id)
+            .map((i) =>
+              i.id === parent.id ? { ...i, subtasks: [...(i.subtasks || []), ...newSubs] } : i
+            ),
+        }))
+      );
+      setTotalCount((c) => Math.max(0, c - 1));
+      const extra = newSubs.length > 1 ? ` (+${newSubs.length - 1} subtareas)` : '';
+      addToast('success', `"${task.title}" ahora es subtarea de "${parent.title}"${extra}.`);
+    } catch (err: any) {
+      addToast('error', `Error al anidar tarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
+  // Convertir una subtarea en tarea principal de una columna
+  const handlePromoteSubtask = async (
+    subtask: SubTaskItem,
+    parent: KanbanItem,
+    targetStatus: KanbanStatus
+  ) => {
+    try {
+      const created = await googleTasksDirect.promoteSubtask(subtask, parent, targetStatus);
+      setColumns((prev) =>
+        prev.map((col) => {
+          const items = col.items.map((i) =>
+            i.id === parent.id
+              ? { ...i, subtasks: (i.subtasks || []).filter((s) => s.id !== subtask.id) }
+              : i
+          );
+          if (col.id !== targetStatus) return { ...col, items };
+          const minPos = items.reduce((m, i) => Math.min(m, i.position), Infinity);
+          const withPos = { ...created, position: Number.isFinite(minPos) ? minPos - 1000 : 0 };
+          return { ...col, items: [withPos, ...items.filter((i) => i.id !== created.id)] };
+        })
+      );
+      setTotalCount((c) => c + 1);
+      addToast('success', `"${subtask.title}" ahora es una tarea.`);
+    } catch (err: any) {
+      addToast('error', `Error al convertir subtarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
+  // Mover una subtarea a otra tarjeta o reordenarla dentro de la misma
+  const handleMoveSubtask = async (
+    subtask: SubTaskItem,
+    fromParent: KanbanItem,
+    toParent: KanbanItem,
+    previousId: string | null,
+    targetIndex: number
+  ) => {
+    try {
+      const moved = await googleTasksDirect.moveSubtaskToParent(
+        subtask,
+        fromParent,
+        toParent,
+        previousId
+      );
+      setColumns((prev) =>
+        prev.map((col) => ({
+          ...col,
+          items: col.items.map((i) => {
+            if (i.id !== fromParent.id && i.id !== toParent.id) return i;
+            let subs = (i.subtasks || []).filter((s) => s.id !== subtask.id && s.id !== moved.id);
+            if (i.id === toParent.id) {
+              subs = [...subs];
+              subs.splice(Math.min(targetIndex, subs.length), 0, moved);
+            }
+            return { ...i, subtasks: subs };
+          }),
+        }))
+      );
+      if (fromParent.id !== toParent.id) {
+        addToast('success', `Subtarea "${subtask.title}" movida a "${toParent.title}".`);
+      }
+    } catch (err: any) {
+      addToast('error', `Error al mover subtarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
   // Importar tareas de la lista por defecto ("My Tasks")
   const handleImportFromMyTasks = async () => {
     if (isImporting) return;
@@ -532,6 +622,9 @@ export const App: React.FC = () => {
                 onAddSubtask={handleAddSubtask}
                 onDeleteSubtask={handleDeleteSubtask}
                 onUpdateTask={handleUpdateTask}
+                onNestTask={handleNestTask}
+                onPromoteSubtask={handlePromoteSubtask}
+                onMoveSubtask={handleMoveSubtask}
               />
             </div>
           </div>
