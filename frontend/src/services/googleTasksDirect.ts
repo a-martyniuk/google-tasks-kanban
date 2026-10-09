@@ -28,22 +28,61 @@ const DEFAULT_COLUMN_TITLES: Record<KanbanStatus, string> = {
 
 class GoogleTasksDirectService {
   private accessToken: string | null = null;
+  private tokenExpiresAt: number = 0;
   private tokenClient: any = null;
+  private refreshTimer: any = null;
+  private refreshPromise: Promise<string> | null = null;
+  private isSessionPaused: boolean = false;
   private listMapping: ColumnListMapping | null = null;
   private mockState: Map<KanbanStatus, KanbanItem[]> = new Map();
   private mockMode: boolean = false;
 
+  public onAuthStateChanged?: (state: {
+    isConnected: boolean;
+    isPaused: boolean;
+    user?: GoogleUserProfile;
+  }) => void;
+
   constructor() {
     this.initMockData();
+    this.initAuthFromStorage();
   }
 
   // ==========================================
-  // AUTENTICACIÓN DIRECTA CLIENTE (OAUTH 2.0 GIS)
+  // AUTENTICACIÓN DIRECTA Y PERSISTENCIA (ZERO-DB)
   // ==========================================
 
-  public setAccessToken(token: string) {
+  private initAuthFromStorage() {
+    const isConnected = localStorage.getItem('kanban_google_connected') === 'true';
+    const token = localStorage.getItem('kanban_google_token');
+    const expiry = localStorage.getItem('kanban_google_token_expiry');
+
+    if (isConnected && token) {
+      this.accessToken = token;
+      this.tokenExpiresAt = Number(expiry) || 0;
+      this.mockMode = false;
+
+      if (this.tokenExpiresAt > Date.now()) {
+        this.isSessionPaused = false;
+        this.scheduleTokenRefresh();
+      } else {
+        // El token anterior expiró mientras el usuario estaba fuera;
+        // Se marcará como pendiente de renovación sin borrar datos
+        this.isSessionPaused = true;
+      }
+    }
+  }
+
+  public setAccessToken(token: string, expiresInSec: number = 3599) {
     this.accessToken = token;
+    this.tokenExpiresAt = Date.now() + expiresInSec * 1000;
     this.mockMode = false;
+    this.isSessionPaused = false;
+    localStorage.setItem('kanban_google_token', token);
+    localStorage.setItem('kanban_google_token_expiry', String(this.tokenExpiresAt));
+    localStorage.setItem('kanban_google_connected', 'true');
+    this.scheduleTokenRefresh();
+    this.onAuthStateChanged?.({ isConnected: true, isPaused: false });
   }
 
   public getAccessToken(): string | null {
@@ -56,6 +95,132 @@ class GoogleTasksDirectService {
 
   public setMockMode(enabled: boolean) {
     this.mockMode = enabled;
+  }
+
+  public isConnected(): boolean {
+    return localStorage.getItem('kanban_google_connected') === 'true';
+  }
+
+  public getIsSessionPaused(): boolean {
+    return this.isSessionPaused;
+  }
+
+  public scheduleTokenRefresh() {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+
+    if (!this.accessToken || !this.tokenExpiresAt) return;
+
+    // Renovar proactivamente 5 minutos antes de expirar
+    const msUntilRefresh = Math.max(5000, this.tokenExpiresAt - Date.now() - 5 * 60 * 1000);
+    this.refreshTimer = setTimeout(() => {
+      this.refreshAccessTokenSilently().catch((err) => {
+        console.warn('[GoogleTasks] Renovación proactiva silenciosa no disponible en segundo plano:', err);
+      });
+    }, msUntilRefresh);
+  }
+
+  /**
+   * Intenta refrescar el token de acceso de Google de manera silenciosa en segundo plano
+   * (usando prompt: '' con GIS) sin interrumpir al usuario.
+   */
+  public async refreshAccessTokenSilently(): Promise<string> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const token = await this.requestGoogleTokenInternal({ prompt: '', silent: true });
+        this.isSessionPaused = false;
+        this.onAuthStateChanged?.({ isConnected: true, isPaused: false });
+        return token;
+      } catch (err: any) {
+        if (this.tokenExpiresAt && Date.now() >= this.tokenExpiresAt) {
+          this.isSessionPaused = true;
+          this.onAuthStateChanged?.({ isConnected: true, isPaused: true });
+        }
+        throw err;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  public async ensureValidToken(): Promise<string | null> {
+    if (this.mockMode || !this.isConnected()) return null;
+    if (!this.accessToken || (this.tokenExpiresAt && Date.now() >= this.tokenExpiresAt - 60000)) {
+      try {
+        return await this.refreshAccessTokenSilently();
+      } catch {
+        return this.accessToken;
+      }
+    }
+    return this.accessToken;
+  }
+
+  /**
+   * Wrapper centralizado para llamadas autenticadas a Google Tasks API v1.
+   * Cuenta con pre-chequeo de expiración y reintento automático transparente ante respuestas 401.
+   */
+  public async fetchWithAuth(url: string | URL, init: RequestInit = {}): Promise<Response> {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
+      throw new Error('Servicio no conectado con Google Tasks');
+    }
+
+    // Refrescar preventivamente si vence en menos de 1 minuto
+    if (this.tokenExpiresAt && Date.now() >= this.tokenExpiresAt - 60000) {
+      await this.refreshAccessTokenSilently().catch(() => {});
+    }
+
+    const exec = (token: string) => {
+      const headers = new Headers(init.headers || {});
+      headers.set('Authorization', `Bearer ${token}`);
+      return fetch(url.toString(), { ...init, headers });
+    };
+
+    let res = await exec(this.accessToken || '');
+
+    // Si devolvió 401 (token expirado en servidor), intentar 1 auto-refresco y reintentar
+    if (res.status === 401) {
+      console.warn('[GoogleTasks] 401 detectado, intentando auto-renovación silenciosa...');
+      const newToken = await this.refreshAccessTokenSilently().catch(() => null);
+      if (newToken) {
+        res = await exec(newToken);
+      }
+    }
+
+    if (res.status === 401) {
+      this.handleTokenExpired();
+    }
+
+    return res;
+  }
+
+  private handleTokenExpired(): never {
+    this.isSessionPaused = true;
+    this.onAuthStateChanged?.({ isConnected: true, isPaused: true });
+    throw new Error('Tu sesión de Google expiró. Por favor haz clic en "Renovar sesión" para reconectar.');
+  }
+
+  public logout() {
+    this.accessToken = null;
+    this.tokenExpiresAt = 0;
+    this.isSessionPaused = false;
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    localStorage.removeItem('kanban_google_token');
+    localStorage.removeItem('kanban_google_token_expiry');
+    localStorage.removeItem('kanban_google_connected');
+    localStorage.removeItem('kanban_google_user_profile');
+    this.setMockMode(true);
+    this.onAuthStateChanged?.({ isConnected: false, isPaused: false });
   }
 
   // ==========================================
@@ -86,7 +251,7 @@ class GoogleTasksDirectService {
   }
 
   public async fetchTaskLists(): Promise<TaskList[]> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       return [
         { id: 'mock-todo', title: 'Para hacer' },
         { id: 'mock-in-progress', title: 'En progreso' },
@@ -96,13 +261,7 @@ class GoogleTasksDirectService {
       ];
     }
 
-    const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
+    const res = await this.fetchWithAuth('https://tasks.googleapis.com/tasks/v1/users/@me/lists');
 
     if (!res.ok) {
       throw new Error(`Error al consultar listas de Google Tasks: ${res.statusText}`);
@@ -115,12 +274,6 @@ class GoogleTasksDirectService {
     }));
   }
 
-  private handleTokenExpired(): never {
-    this.accessToken = null;
-    sessionStorage.removeItem('kanban_google_token');
-    throw new Error('Tu sesión de Google expiró. Por favor haz clic en "Vincular con tu Gmail" para renovar.');
-  }
-
   public getClientId(): string {
     return (
       (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
@@ -130,7 +283,19 @@ class GoogleTasksDirectService {
   }
 
   public async requestGoogleToken(providedClientId?: string): Promise<string> {
-    const clientId = providedClientId || this.getClientId();
+    return this.requestGoogleTokenInternal({
+      providedClientId,
+      prompt: '',
+      silent: false,
+    });
+  }
+
+  private async requestGoogleTokenInternal(options: {
+    providedClientId?: string;
+    prompt?: string;
+    silent?: boolean;
+  } = {}): Promise<string> {
+    const clientId = options.providedClientId || this.getClientId();
     if (!clientId) {
       throw new Error(
         'Falta configurar VITE_GOOGLE_CLIENT_ID en Vercel para habilitar el inicio de sesión con Gmail con un clic.'
@@ -147,26 +312,42 @@ class GoogleTasksDirectService {
         return;
       }
 
-      this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+      const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         callback: (response: any) => {
           if (response.error) {
+            if (options.silent) {
+              reject(new Error(`Renovación silenciosa no disponible: ${response.error}`));
+              return;
+            }
+            if (options.prompt === '') {
+              // Si falla silencioso en modo interactivo, solicitar con prompt explícito
+              console.log('[GoogleTasks] Solicitando autorización explícita...');
+              client.requestAccessToken({ prompt: 'consent' });
+              return;
+            }
             reject(new Error(`Error de autenticación Google: ${response.error}`));
             return;
           }
-          this.accessToken = response.access_token;
-          this.mockMode = false;
+
+          const expiresInSec = Number(response.expires_in) || 3599;
+          this.setAccessToken(response.access_token, expiresInSec);
           resolve(response.access_token);
         },
       });
 
-      this.tokenClient.requestAccessToken({ prompt: '' });
+      this.tokenClient = client;
+      client.requestAccessToken({ prompt: options.prompt !== undefined ? options.prompt : '' });
     });
   }
 
   public async fetchUserProfile(): Promise<GoogleUserProfile | null> {
-    if (this.mockMode || !this.accessToken) {
+    const cached = localStorage.getItem('kanban_google_user_profile');
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
       return {
         name: 'Alexis (Portfolio Demo)',
         email: 'alexis.demo@gmail.com',
@@ -175,17 +356,25 @@ class GoogleTasksDirectService {
     }
 
     try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-      });
-      if (!res.ok) return null;
+      const res = await this.fetchWithAuth('https://www.googleapis.com/oauth2/v2/userinfo');
+      if (!res.ok) {
+        if (cached) {
+          try { return JSON.parse(cached); } catch {}
+        }
+        return null;
+      }
       const data = await res.json();
-      return {
+      const profile: GoogleUserProfile = {
         name: data.name || 'Usuario Google',
         email: data.email || '',
         picture: data.picture || '',
       };
+      localStorage.setItem('kanban_google_user_profile', JSON.stringify(profile));
+      return profile;
     } catch {
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
       return null;
     }
   }
@@ -195,7 +384,7 @@ class GoogleTasksDirectService {
   // ==========================================
 
   public async ensureKanbanLists(): Promise<ColumnListMapping> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       return {
         todo: { listId: 'mock-todo', title: 'Para hacer' },
         in_progress: { listId: 'mock-in-progress', title: 'En progreso' },
@@ -205,9 +394,7 @@ class GoogleTasksDirectService {
     }
 
     // 1. Obtener listas existentes del usuario
-    const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
+    const res = await this.fetchWithAuth('https://tasks.googleapis.com/tasks/v1/users/@me/lists');
 
     if (!res.ok) {
       throw new Error(`Error consultando listas en Google Tasks: ${res.statusText}`);
@@ -220,20 +407,15 @@ class GoogleTasksDirectService {
 
     // 2. Mapear o crear las 4 listas
     for (const [statusKey, defaultTitle] of Object.entries(DEFAULT_COLUMN_TITLES) as [KanbanStatus, string][]) {
-      // Buscar lista coincidente (case insensitive)
       let match = existingLists.find(
         (l) => l.title.trim().toLowerCase() === defaultTitle.toLowerCase()
       );
 
       if (!match) {
-        // Crear la lista en Google Tasks si no existe
         console.log(`[GoogleTasks] Creando lista remota "${defaultTitle}"...`);
-        const createRes = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+        const createRes = await this.fetchWithAuth('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: defaultTitle }),
         });
 
@@ -262,7 +444,7 @@ class GoogleTasksDirectService {
     listId: string,
     params: { showCompleted?: boolean; showHidden?: boolean } = {}
   ): Promise<any[]> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       return [];
     }
 
@@ -282,13 +464,7 @@ class GoogleTasksDirectService {
         url.searchParams.set('pageToken', pageToken);
       }
 
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-      });
-
-      if (res.status === 401) {
-        this.handleTokenExpired();
-      }
+      const res = await this.fetchWithAuth(url.toString());
 
       if (!res.ok) {
         console.warn(`Error al consultar tareas de ${listId}: ${res.statusText}`);
@@ -313,7 +489,7 @@ class GoogleTasksDirectService {
     totalCount: number;
     lastSyncedAt: string;
   }> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       let total = 0;
       const cols: any[] = [];
       for (const [status, title] of Object.entries(DEFAULT_COLUMN_TITLES) as [KanbanStatus, string][]) {
@@ -331,6 +507,16 @@ class GoogleTasksDirectService {
         totalCount: total,
         lastSyncedAt: new Date().toISOString(),
       };
+    }
+
+    // Si está conectado pero el token está ausente o expirado, intentar validar
+    if (this.isConnected() && !this.accessToken) {
+      await this.ensureValidToken();
+      if (!this.accessToken) {
+        this.isSessionPaused = true;
+        this.onAuthStateChanged?.({ isConnected: true, isPaused: true });
+        throw new Error('Sesión de Google en pausa. Haz clic en "Renovar sesión" para sincronizar tus tareas.');
+      }
     }
 
     const mapping = this.listMapping || (await this.ensureKanbanLists());
@@ -517,7 +703,7 @@ class GoogleTasksDirectService {
     targetStatus: KanbanStatus,
     targetPosition: number
   ): Promise<KanbanItem> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       // Simulación en memoria
       const currentList = this.mockState.get(task.status) || [];
       const filtered = currentList.filter((t) => t.id !== task.id);
@@ -547,12 +733,11 @@ class GoogleTasksDirectService {
 
     // Para mover entre dos listas distintas en Google Tasks API v1:
     // 1. Insertar la tarea en la lista de destino
-    const insertRes = await fetch(
+    const insertRes = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -562,10 +747,6 @@ class GoogleTasksDirectService {
         }),
       }
     );
-
-    if (insertRes.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!insertRes.ok) {
       throw new Error(`Error creando tarea en lista destino: ${insertRes.statusText}`);
@@ -578,12 +759,11 @@ class GoogleTasksDirectService {
     if (task.subtasks && task.subtasks.length > 0) {
       for (const sub of task.subtasks) {
         try {
-          const subRes = await fetch(
+          const subRes = await this.fetchWithAuth(
             `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${newGoogleTask.id}`,
             {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${this.accessToken}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -614,12 +794,11 @@ class GoogleTasksDirectService {
     const settings = this.getSettings();
     if (targetStatus === 'done' && settings.completeInSourceOnDone) {
       try {
-        await fetch(
+        await this.fetchWithAuth(
           `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${newGoogleTask.id}`,
           {
             method: 'PATCH',
             headers: {
-              Authorization: `Bearer ${this.accessToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ status: 'completed' }),
@@ -631,12 +810,11 @@ class GoogleTasksDirectService {
     } else if (task.status === 'done' && targetStatus !== 'done') {
       // Si sale de Terminado, reactivar en la fuente
       try {
-        await fetch(
+        await this.fetchWithAuth(
           `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${newGoogleTask.id}`,
           {
             method: 'PATCH',
             headers: {
-              Authorization: `Bearer ${this.accessToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ status: 'needsAction' }),
@@ -648,11 +826,10 @@ class GoogleTasksDirectService {
     }
 
     // 2. Eliminar de la lista de origen en Google Tasks (Google Tasks borra recursivamente las subtareas del padre)
-    fetch(
+    this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${sourceListId}/tasks/${task.id}`,
       {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${this.accessToken}` },
       }
     ).catch((err) => console.warn('Error borrando tarea de lista previa:', err));
 
@@ -688,14 +865,9 @@ class GoogleTasksDirectService {
       url.searchParams.set('destinationTasklist', opts.destinationTasklist);
     }
 
-    const res = await fetch(url.toString(), {
+    const res = await this.fetchWithAuth(url.toString(), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.accessToken}` },
     });
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok) {
       let detail = res.statusText;
@@ -746,7 +918,7 @@ class GoogleTasksDirectService {
     });
     const children = (task.subtasks || []).filter((s) => !s.id.startsWith('temp-'));
 
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const srcList = this.mockState.get(task.status) || [];
       this.mockState.set(task.status, srcList.filter((t) => t.id !== task.id));
       const result = [taskAsSub(task.id), ...children];
@@ -818,7 +990,7 @@ class GoogleTasksDirectService {
       subtasks: [],
     });
 
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const mockParent = this.findMockItem(parent.id);
       if (mockParent) {
         mockParent.subtasks = (mockParent.subtasks || []).filter((s) => s.id !== sub.id);
@@ -840,12 +1012,11 @@ class GoogleTasksDirectService {
     const settings = this.getSettings();
     if (targetStatus === 'done' && settings.completeInSourceOnDone && moved?.status !== 'completed') {
       try {
-        const patchRes = await fetch(
+        const patchRes = await this.fetchWithAuth(
           `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${moved?.id || sub.id}`,
           {
             method: 'PATCH',
             headers: {
-              Authorization: `Bearer ${this.accessToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ status: 'completed' }),
@@ -876,7 +1047,7 @@ class GoogleTasksDirectService {
       throw new Error('No se puede anidar dentro de una subtarea: Google Tasks admite un solo nivel.');
     }
 
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const from = this.findMockItem(fromParent.id);
       if (from) from.subtasks = (from.subtasks || []).filter((s) => s.id !== sub.id);
       const to = this.findMockItem(toParent.id);
@@ -913,7 +1084,7 @@ class GoogleTasksDirectService {
     parentTask: KanbanItem,
     title: string
   ): Promise<SubTaskItem> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const newSub: SubTaskItem = {
         id: `mock-sub-${Date.now()}`,
         title,
@@ -930,12 +1101,11 @@ class GoogleTasksDirectService {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
     const listId = parentTask.sourceListId || mapping[parentTask.status].listId;
 
-    const res = await fetch(
+    const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks?parent=${parentTask.id}`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -944,10 +1114,6 @@ class GoogleTasksDirectService {
         }),
       }
     );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok) {
       throw new Error(`Error creando subtarea: ${res.statusText}`);
@@ -962,6 +1128,61 @@ class GoogleTasksDirectService {
   }
 
   // ==========================================
+  // EDITAR SUBTAREA EN GOOGLE TASKS
+  // ==========================================
+
+  public async updateSubtask(
+    listId: string,
+    subtaskId: string,
+    title: string
+  ): Promise<SubTaskItem> {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error('El título de la subtarea no puede estar vacío');
+    }
+
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
+      for (const list of this.mockState.values()) {
+        for (const item of list) {
+          if (item.subtasks) {
+            const sub = item.subtasks.find((s) => s.id === subtaskId);
+            if (sub) {
+              sub.title = trimmed;
+              return { ...sub };
+            }
+          }
+        }
+      }
+      return { id: subtaskId, title: trimmed, status: 'needsAction' };
+    }
+
+    const res = await this.fetchWithAuth(
+      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${subtaskId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: trimmed,
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(`Error actualizando subtarea: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return {
+      id: data.id,
+      title: data.title,
+      status: data.status || 'needsAction',
+      completed: data.completed || null,
+    };
+  }
+
+  // ==========================================
   // ACTUALIZAR TAREA (TÍTULO, NOTAS, FECHA)
   // ==========================================
 
@@ -969,7 +1190,7 @@ class GoogleTasksDirectService {
     task: KanbanItem,
     updates: { title?: string; description?: string | null; dueDate?: string | null }
   ): Promise<KanbanItem> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const list = this.mockState.get(task.status) || [];
       const item = list.find((t) => t.id === task.id);
       if (item) {
@@ -994,21 +1215,16 @@ class GoogleTasksDirectService {
         : null;
     }
 
-    const res = await fetch(
+    const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${task.id}`,
       {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
       }
     );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok) {
       throw new Error(`Error actualizando tarea: ${res.statusText}`);
@@ -1032,7 +1248,7 @@ class GoogleTasksDirectService {
     subtaskId: string,
     completed: boolean
   ): Promise<void> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       for (const list of this.mockState.values()) {
         for (const item of list) {
           if (item.subtasks) {
@@ -1047,12 +1263,11 @@ class GoogleTasksDirectService {
       return;
     }
 
-    const res = await fetch(
+    const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${subtaskId}`,
       {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1060,10 +1275,6 @@ class GoogleTasksDirectService {
         }),
       }
     );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok) {
       throw new Error(`Error actualizando subtarea: ${res.statusText}`);
@@ -1078,7 +1289,7 @@ class GoogleTasksDirectService {
     listId: string,
     subtaskId: string
   ): Promise<void> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       for (const list of this.mockState.values()) {
         for (const item of list) {
           if (item.subtasks) {
@@ -1089,17 +1300,12 @@ class GoogleTasksDirectService {
       return;
     }
 
-    const res = await fetch(
+    const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${subtaskId}`,
       {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${this.accessToken}` },
       }
     );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok && res.status !== 404) {
       throw new Error(`Error eliminando subtarea: ${res.statusText}`);
@@ -1111,7 +1317,7 @@ class GoogleTasksDirectService {
   // ==========================================
 
   public async importTasksFromDefaultList(): Promise<number> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       return 0;
     }
 
@@ -1131,12 +1337,11 @@ class GoogleTasksDirectService {
     // 1. Crear primero las tareas principales
     const parents = tasks.filter((x) => !x.parent && x.title && !x.deleted);
     for (const t of parents) {
-      const createRes = await fetch(
+      const createRes = await this.fetchWithAuth(
         `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks`,
         {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -1162,10 +1367,9 @@ class GoogleTasksDirectService {
         ? `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks?parent=${newParentId}`
         : `https://tasks.googleapis.com/tasks/v1/lists/${todoListId}/tasks`;
 
-      const createRes = await fetch(url, {
+      const createRes = await this.fetchWithAuth(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1193,7 +1397,7 @@ class GoogleTasksDirectService {
     description?: string,
     dueDate?: string | null
   ): Promise<KanbanItem> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const id = `mock-task-${Date.now()}`;
       const newItem: KanbanItem = {
         id,
@@ -1217,10 +1421,9 @@ class GoogleTasksDirectService {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
     const listId = mapping[status].listId;
 
-    const res = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks`, {
+    const res = await this.fetchWithAuth(`https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1233,10 +1436,6 @@ class GoogleTasksDirectService {
           : undefined,
       }),
     });
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok) {
       throw new Error(`Error creando tarea: ${res.statusText}`);
@@ -1264,7 +1463,7 @@ class GoogleTasksDirectService {
   // ==========================================
 
   public async deleteTask(task: KanbanItem): Promise<void> {
-    if (this.mockMode || !this.accessToken) {
+    if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       const list = this.mockState.get(task.status) || [];
       this.mockState.set(
         task.status,
@@ -1276,17 +1475,12 @@ class GoogleTasksDirectService {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
     const listId = task.sourceListId || mapping[task.status].listId;
 
-    const res = await fetch(
+    const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${task.id}`,
       {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${this.accessToken}` },
       }
     );
-
-    if (res.status === 401) {
-      this.handleTokenExpired();
-    }
 
     if (!res.ok && res.status !== 404) {
       throw new Error(`Error eliminando tarea en Google Tasks: ${res.statusText}`);

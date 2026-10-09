@@ -16,6 +16,7 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSessionPaused, setIsSessionPaused] = useState(googleTasksDirect.getIsSessionPaused());
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -48,12 +49,26 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Suscripción a cambios de estado de autenticación (Zero-DB)
+  useEffect(() => {
+    googleTasksDirect.onAuthStateChanged = (state) => {
+      setIsSessionPaused(state.isPaused);
+      if (!state.isConnected) {
+        setUser({
+          userId: 'demo-user',
+          email: 'demo@kanban.local',
+          name: 'Alexis (Portfolio Demo)',
+          avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=AlexisPortfolio',
+          isDemo: true,
+        });
+      }
+    };
+  }, []);
+
   // Inicialización
   useEffect(() => {
     const initApp = async () => {
-      const savedToken = sessionStorage.getItem('kanban_google_token');
-      if (savedToken) {
-        googleTasksDirect.setAccessToken(savedToken);
+      if (googleTasksDirect.isConnected()) {
         const profile = await googleTasksDirect.fetchUserProfile();
         if (profile) {
           setUser({
@@ -82,13 +97,13 @@ export const App: React.FC = () => {
     initApp();
   }, [loadBoard]);
 
-  // Sincronización periódica automática configurable
+  // Sincronización periódica automática configurable (se pausa si la sesión está en pausa)
   useEffect(() => {
     const settings = googleTasksDirect.getSettings();
     const intervalMs = (settings.autoSyncInterval || 60) * 1000;
 
     syncIntervalRef.current = window.setInterval(() => {
-      if (!isSyncing) {
+      if (!isSyncing && !googleTasksDirect.getIsSessionPaused()) {
         loadBoard();
       }
     }, intervalMs);
@@ -365,6 +380,44 @@ export const App: React.FC = () => {
     }
   };
 
+  // Actualizar subtarea (renombrar) en Google Tasks (optimista)
+  const handleUpdateSubtask = async (
+    task: KanbanItem,
+    subtask: SubTaskItem,
+    newTitle: string
+  ) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed || trimmed === subtask.title) return;
+
+    // Actualización optimista inmediata
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== task.status) return col;
+        return {
+          ...col,
+          items: col.items.map((item) => {
+            if (item.id !== task.id) return item;
+            return {
+              ...item,
+              subtasks: (item.subtasks || []).map((s) =>
+                s.id === subtask.id ? { ...s, title: trimmed } : s
+              ),
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      const listId = task.sourceListId || 'mock';
+      await googleTasksDirect.updateSubtask(listId, subtask.id, trimmed);
+      addToast('success', 'Subtarea actualizada.');
+    } catch (err: any) {
+      addToast('error', `Error al actualizar subtarea: ${err.message}`);
+      await loadBoard();
+    }
+  };
+
   // Convertir una tarea en subtarea de otra (sus subtareas pasan a ser hermanas)
   const handleNestTask = async (task: KanbanItem, parent: KanbanItem) => {
     try {
@@ -478,8 +531,8 @@ export const App: React.FC = () => {
   // Conectar con Google OAuth real (1 solo clic)
   const handleLoginGoogle = async () => {
     try {
-      const token = await googleTasksDirect.requestGoogleToken();
-      sessionStorage.setItem('kanban_google_token', token);
+      await googleTasksDirect.requestGoogleToken();
+      setIsSessionPaused(false);
       const profile = await googleTasksDirect.fetchUserProfile();
       if (profile) {
         setUser({
@@ -497,10 +550,31 @@ export const App: React.FC = () => {
     }
   };
 
+  // Renovar sesión Google (alerta preventiva o reactiva)
+  const handleRenewSession = async () => {
+    try {
+      await googleTasksDirect.requestGoogleToken();
+      setIsSessionPaused(false);
+      const profile = await googleTasksDirect.fetchUserProfile();
+      if (profile) {
+        setUser({
+          userId: 'google-user',
+          email: profile.email,
+          name: profile.name,
+          avatarUrl: profile.picture,
+          isDemo: false,
+        });
+      }
+      addToast('success', 'Sesión de Google renovada exitosamente.');
+      await loadBoard();
+    } catch (err: any) {
+      addToast('error', `Error al renovar sesión: ${err.message}`);
+    }
+  };
+
   const handleLogout = () => {
-    sessionStorage.removeItem('kanban_google_token');
-    googleTasksDirect.setAccessToken('');
-    googleTasksDirect.setMockMode(true);
+    googleTasksDirect.logout();
+    setIsSessionPaused(false);
     setUser({
       userId: 'demo-user',
       email: 'demo@kanban.local',
@@ -518,10 +592,12 @@ export const App: React.FC = () => {
         user={user}
         lastSyncedAt={lastSyncedAt}
         isSyncing={isSyncing}
+        isSessionPaused={isSessionPaused}
         onSync={handleManualSync}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLoginGoogle={handleLoginGoogle}
         onLogout={handleLogout}
+        onRenewSession={handleRenewSession}
       />
 
       {/* Área del Tablero */}
@@ -621,6 +697,7 @@ export const App: React.FC = () => {
                 onToggleSubtask={handleToggleSubtask}
                 onAddSubtask={handleAddSubtask}
                 onDeleteSubtask={handleDeleteSubtask}
+                onUpdateSubtask={handleUpdateSubtask}
                 onUpdateTask={handleUpdateTask}
                 onNestTask={handleNestTask}
                 onPromoteSubtask={handlePromoteSubtask}

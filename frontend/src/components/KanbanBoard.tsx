@@ -18,6 +18,7 @@ interface KanbanBoardProps {
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
   onDeleteSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onUpdateSubtask?: (task: KanbanItem, subtask: SubTaskItem, newTitle: string) => Promise<void>;
   onUpdateTask?: (task: KanbanItem, updates: { title?: string; description?: string | null; dueDate?: string | null }) => Promise<void>;
   onNestTask?: (task: KanbanItem, parent: KanbanItem) => Promise<void>;
   onPromoteSubtask?: (subtask: SubTaskItem, parent: KanbanItem, targetStatus: KanbanStatus) => Promise<void>;
@@ -39,6 +40,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onToggleSubtask,
   onAddSubtask,
   onDeleteSubtask,
+  onUpdateSubtask,
   onUpdateTask,
   onNestTask,
   onPromoteSubtask,
@@ -311,6 +313,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             onToggleSubtask={onToggleSubtask}
             onAddSubtask={onAddSubtask}
             onDeleteSubtask={onDeleteSubtask}
+            onUpdateSubtask={onUpdateSubtask}
             onUpdateTask={onUpdateTask}
           />
         ))}

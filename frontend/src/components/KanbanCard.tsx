@@ -24,6 +24,11 @@ interface KanbanCardProps {
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
   onDeleteSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
+  onUpdateSubtask?: (
+    task: KanbanItem,
+    subtask: SubTaskItem,
+    newTitle: string
+  ) => Promise<void>;
   onUpdateTask?: (
     task: KanbanItem,
     updates: { title?: string; description?: string | null; dueDate?: string | null }
@@ -38,6 +43,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   onToggleSubtask,
   onAddSubtask,
   onDeleteSubtask,
+  onUpdateSubtask,
   onUpdateTask,
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -46,7 +52,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
 
-  // Modo edición inline
+  // Edición inline de subtareas
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [editSubtaskTitle, setEditSubtaskTitle] = useState('');
+  const [isSavingSubtask, setIsSavingSubtask] = useState(false);
+
+  // Modo edición inline de tarea principal
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title);
   const [editDescription, setEditDescription] = useState(item.description || '');
@@ -232,6 +243,41 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       setSubtasksOpen(true);
     } finally {
       setIsAddingSubtask(false);
+    }
+  };
+
+  const handleStartEditSubtask = (sub: SubTaskItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingSubtaskId(sub.id);
+    setEditSubtaskTitle(sub.title);
+  };
+
+  const handleCancelEditSubtask = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation();
+    setEditingSubtaskId(null);
+    setEditSubtaskTitle('');
+  };
+
+  const handleSaveSubtask = async (sub: SubTaskItem, e?: React.FormEvent | React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    const trimmed = editSubtaskTitle.trim();
+    if (!trimmed || trimmed === sub.title) {
+      setEditingSubtaskId(null);
+      return;
+    }
+    if (!onUpdateSubtask) {
+      setEditingSubtaskId(null);
+      return;
+    }
+    setIsSavingSubtask(true);
+    try {
+      await onUpdateSubtask(item, sub, trimmed);
+      setEditingSubtaskId(null);
+    } catch {
+      // toast de error manejado por el contenedor
+    } finally {
+      setIsSavingSubtask(false);
     }
   };
 
@@ -425,63 +471,119 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                           <div
                             ref={subDragProvided.innerRef}
                             {...subDragProvided.draggableProps}
-                            className={`flex items-start justify-between gap-1.5 text-xs px-1 py-0.5 rounded transition-colors group/sub ${
+                            className={`flex items-center justify-between gap-1.5 text-xs px-1 py-1 rounded transition-colors group/sub ${
                               subDragSnapshot.isDragging
                                 ? 'bg-white shadow-lg ring-1 ring-blue-500/50 rounded z-50'
                                 : 'hover:bg-slate-50'
                             }`}
                           >
-                            <div className="flex items-start gap-1 flex-1 min-w-0">
-                              <span
-                                {...subDragProvided.dragHandleProps}
-                                className="p-0.5 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0 mt-0.5"
-                                title="Arrastrar para reordenar, mover a otra tarea o soltar en una columna para convertir en tarea principal"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <GripVertical className="w-3 h-3" />
-                              </span>
+                            <span
+                              {...subDragProvided.dragHandleProps}
+                              className="p-0.5 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0"
+                              title="Arrastrar para reordenar, mover a otra tarea o soltar en una columna para convertir en tarea principal"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <GripVertical className="w-3 h-3" />
+                            </span>
 
-                              <div
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onToggleSubtask) {
-                                    onToggleSubtask(item, sub);
-                                  }
-                                }}
-                                className="flex items-start gap-1.5 flex-1 min-w-0 cursor-pointer"
+                            {editingSubtaskId === sub.id ? (
+                              <form
+                                onSubmit={(e) => handleSaveSubtask(sub, e)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex items-center gap-1 flex-1 min-w-0"
                               >
                                 <input
-                                  type="checkbox"
-                                  checked={isDone}
-                                  onChange={() => {}}
-                                  className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
+                                  type="text"
+                                  autoFocus
+                                  value={editSubtaskTitle}
+                                  onChange={(e) => setEditSubtaskTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') handleCancelEditSubtask(e);
+                                  }}
+                                  disabled={isSavingSubtask}
+                                  className="flex-1 min-w-0 text-xs px-1.5 py-0.5 border border-blue-400 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
                                 />
-                                <span
-                                  className={`leading-snug transition-all break-words ${
-                                    isDone
-                                      ? 'line-through text-slate-400'
-                                      : 'text-slate-700 group-hover/sub:text-slate-900'
-                                  }`}
+                                <button
+                                  type="submit"
+                                  disabled={isSavingSubtask || !editSubtaskTitle.trim()}
+                                  className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer disabled:opacity-50 shrink-0"
+                                  title="Guardar cambios (Enter)"
                                 >
-                                  {sub.title}
-                                </span>
-                              </div>
-                            </div>
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleCancelEditSubtask(e)}
+                                  disabled={isSavingSubtask}
+                                  className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer shrink-0"
+                                  title="Cancelar (Esc)"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </form>
+                            ) : (
+                              <>
+                                <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onToggleSubtask) {
+                                      onToggleSubtask(item, sub);
+                                    }
+                                  }}
+                                  onDoubleClick={(e) => {
+                                    if (onUpdateSubtask) {
+                                      handleStartEditSubtask(sub, e);
+                                    }
+                                  }}
+                                  className="flex items-start gap-1.5 flex-1 min-w-0 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isDone}
+                                    onChange={() => {}}
+                                    className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
+                                  />
+                                  <span
+                                    className={`leading-snug transition-all break-words ${
+                                      isDone
+                                        ? 'line-through text-slate-400'
+                                        : 'text-slate-700 group-hover/sub:text-slate-900'
+                                    }`}
+                                    title={onUpdateSubtask ? 'Doble clic para editar subtarea' : undefined}
+                                  >
+                                    {sub.title}
+                                  </span>
+                                </div>
 
-                            {onDeleteSubtask && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (window.confirm(`¿Eliminar subtarea "${sub.title}"?`)) {
-                                    onDeleteSubtask(item, sub);
-                                  }
-                                }}
-                                className="opacity-0 group-hover/sub:opacity-100 p-0.5 text-slate-300 hover:text-rose-500 rounded transition-opacity shrink-0 cursor-pointer"
-                                title="Eliminar subtarea"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                                  {onUpdateSubtask && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleStartEditSubtask(sub, e)}
+                                      className="p-0.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                      title="Editar subtarea"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                  )}
+
+                                  {onDeleteSubtask && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (window.confirm(`¿Eliminar subtarea "${sub.title}"?`)) {
+                                          onDeleteSubtask(item, sub);
+                                        }
+                                      }}
+                                      className="p-0.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                      title="Eliminar subtarea"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </>
                             )}
                           </div>
                         )}

@@ -1,25 +1,29 @@
 import React from 'react';
-import { RefreshCw, Settings, LogOut, CheckCircle2, User as UserIcon } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, CheckCircle2, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { User } from '../types';
 
 interface HeaderProps {
   user?: User;
   lastSyncedAt: string | null;
   isSyncing: boolean;
+  isSessionPaused?: boolean;
   onSync: () => void;
   onOpenSettings: () => void;
   onLoginGoogle: () => void;
   onLogout: () => void;
+  onRenewSession?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   user,
   lastSyncedAt,
   isSyncing,
+  isSessionPaused,
   onSync,
   onOpenSettings,
   onLoginGoogle,
   onLogout,
+  onRenewSession,
 }) => {
   const formatLastSync = (dateString: string | null) => {
     if (!dateString) return 'Pendiente';
@@ -74,6 +78,18 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
 
+          {/* Alerta de sesión pausada / expirada */}
+          {isSessionPaused && onRenewSession && (
+            <button
+              onClick={onRenewSession}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all active:scale-95 cursor-pointer shadow-2xs animate-pulse"
+              title="Tu sesión con Google Tasks expiró. Haz clic para renovarla en 1 clic sin perder tus tareas."
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+              <span>Renovar sesión Google</span>
+            </button>
+          )}
+
           {/* Botón Configuración */}
           <button
             onClick={onOpenSettings}
@@ -87,17 +103,25 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Perfil de Usuario o Botón Vincular */}
           {user && !user.isDemo ? (
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.name || 'Usuario'}
-                  className="w-7 h-7 rounded-full border border-slate-200 object-cover"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
-                  <UserIcon className="w-4 h-4" />
-                </div>
-              )}
+              <div className="relative">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name || 'Usuario'}
+                    className="w-7 h-7 rounded-full border border-slate-200 object-cover"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                )}
+                {isSessionPaused && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white"
+                    title="Sesión en pausa: haz clic en Renovar sesión Google"
+                  />
+                )}
+              </div>
 
               <div className="hidden lg:block text-left text-xs">
                 <p className="font-semibold text-slate-800 leading-none">{user.name || 'Usuario'}</p>
