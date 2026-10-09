@@ -701,10 +701,20 @@ class GoogleTasksDirectService {
   public async moveTaskBetweenColumns(
     task: KanbanItem,
     targetStatus: KanbanStatus,
-    targetPosition: number
+    targetPosition: number,
+    previousId?: string | null
   ): Promise<KanbanItem> {
     if (this.mockMode || (!this.accessToken && !this.isConnected())) {
       // Simulación en memoria
+      if (task.status === targetStatus) {
+        const list = (this.mockState.get(task.status) || []).map((t) =>
+          t.id === task.id ? { ...t, position: targetPosition } : t
+        );
+        list.sort((a, b) => a.position - b.position);
+        this.mockState.set(task.status, list);
+        return { ...task, position: targetPosition };
+      }
+
       const currentList = this.mockState.get(task.status) || [];
       const filtered = currentList.filter((t) => t.id !== task.id);
       this.mockState.set(task.status, filtered);
@@ -723,18 +733,29 @@ class GoogleTasksDirectService {
     }
 
     const mapping = this.listMapping || (await this.ensureKanbanLists());
-    const sourceListId = task.sourceListId || mapping[task.status].listId;
+    const sourceListId = await this.resolveListId(task);
     const destListId = mapping[targetStatus].listId;
 
     if (sourceListId === destListId) {
-      // Mover dentro de la misma lista
+      // Mover dentro de la misma lista (persistir reordenamiento nativo en Google Tasks)
+      try {
+        await this.moveGoogleTask(sourceListId, task.id, {
+          previous: previousId && !previousId.startsWith('temp-') ? previousId : null,
+        });
+      } catch (err) {
+        console.warn('[moveTaskBetweenColumns] Reordenamiento en Google Tasks falló:', err);
+      }
       return { ...task, position: targetPosition };
     }
 
     // Para mover entre dos listas distintas en Google Tasks API v1:
     // 1. Insertar la tarea en la lista de destino
+    const insertUrl = new URL(`https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks`);
+    if (previousId && !previousId.startsWith('temp-')) {
+      insertUrl.searchParams.set('previous', previousId);
+    }
     const insertRes = await this.fetchWithAuth(
-      `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks`,
+      insertUrl.toString(),
       {
         method: 'POST',
         headers: {
@@ -883,10 +904,13 @@ class GoogleTasksDirectService {
 
   private async resolveListId(item: KanbanItem): Promise<string> {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
+    if (item.sourceListId) {
+      return item.sourceListId;
+    }
     if (item.status && mapping[item.status]?.listId) {
       return mapping[item.status].listId;
     }
-    return item.sourceListId || mapping.todo.listId;
+    return mapping.todo.listId;
   }
 
   private findMockItem(id: string): KanbanItem | undefined {
@@ -1252,8 +1276,7 @@ class GoogleTasksDirectService {
       return newSub;
     }
 
-    const mapping = this.listMapping || (await this.ensureKanbanLists());
-    const listId = parentTask.sourceListId || mapping[parentTask.status].listId;
+    const listId = await this.resolveListId(parentTask);
 
     const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks?parent=${parentTask.id}`,
@@ -1355,8 +1378,7 @@ class GoogleTasksDirectService {
       return { ...task, ...updates };
     }
 
-    const mapping = this.listMapping || (await this.ensureKanbanLists());
-    const listId = task.sourceListId || mapping[task.status].listId;
+    const listId = await this.resolveListId(task);
 
     const body: any = {};
     if (updates.title !== undefined) body.title = updates.title;
@@ -1626,8 +1648,7 @@ class GoogleTasksDirectService {
       return;
     }
 
-    const mapping = this.listMapping || (await this.ensureKanbanLists());
-    const listId = task.sourceListId || mapping[task.status].listId;
+    const listId = await this.resolveListId(task);
 
     const res = await this.fetchWithAuth(
       `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${task.id}`,

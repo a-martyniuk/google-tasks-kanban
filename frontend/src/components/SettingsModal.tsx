@@ -3,6 +3,9 @@ import { X, Check, ListFilter, Sliders, RefreshCw } from 'lucide-react';
 import { TaskList } from '../types';
 import { googleTasksDirect } from '../services/googleTasksDirect';
 
+const KANBAN_TITLES = new Set(['Para hacer', 'En progreso', 'En revisión', 'Terminado']);
+const isKanbanList = (title: string) => KANBAN_TITLES.has(title) || title.startsWith('[KB] ');
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -174,13 +177,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-56 overflow-y-auto bg-slate-50/30">
-                      {taskLists.filter((l) => !l.title.startsWith('[KB] ')).length === 0 ? (
+                      {taskLists.filter((l) => !isKanbanList(l.title)).length === 0 ? (
                         <div className="p-4 text-center text-xs text-slate-400">
                           No tienes otras listas personales en Google Tasks.
                         </div>
                       ) : (
                         taskLists
-                          .filter((l) => !l.title.startsWith('[KB] '))
+                          .filter((l) => !isKanbanList(l.title))
                           .map((list) => {
                             const isChecked = selectedLists.includes(list.id);
                             return (

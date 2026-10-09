@@ -32,6 +32,7 @@ export interface KanbanItem {
 export interface KanbanColumn {
   id: KanbanStatus;
   title: string;
+  listId?: string;
   items: KanbanItem[];
 }
 

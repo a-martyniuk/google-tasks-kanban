@@ -376,9 +376,25 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           </div>
 
           {/* Título */}
-          <h4 className="text-[13px] font-semibold text-slate-900 leading-snug break-words">
-            {item.title}
-          </h4>
+          <div className="flex items-start gap-1.5 flex-wrap">
+            {item.sourceStatus === 'completed' && item.status !== 'done' && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
+                title="Completada desde Google Tasks"
+              >
+                ✓ Hecha en móvil
+              </span>
+            )}
+            <h4
+              className={`text-[13px] font-semibold leading-snug break-words ${
+                item.status === 'done' || item.sourceStatus === 'completed'
+                  ? 'text-slate-500 line-through decoration-slate-400'
+                  : 'text-slate-900'
+              }`}
+            >
+              {item.title}
+            </h4>
+          </div>
 
           {/* Descripción / Notas */}
           {item.description && (

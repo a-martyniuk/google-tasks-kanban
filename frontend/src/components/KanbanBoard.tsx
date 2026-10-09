@@ -12,7 +12,12 @@ import {
 interface KanbanBoardProps {
   initialColumns: KanbanColumnType[];
   onNotify: (type: 'success' | 'error' | 'info', text: string) => void;
-  onMoveTask: (task: KanbanItem, targetStatus: KanbanStatus, targetPosition: number) => Promise<void>;
+  onMoveTask: (
+    task: KanbanItem,
+    targetStatus: KanbanStatus,
+    targetPosition: number,
+    previousId?: string | null
+  ) => Promise<void>;
   onAddTask?: (status: KanbanStatus, title: string, description?: string, dueDate?: string | null) => Promise<void>;
   onDeleteTask?: (task: KanbanItem) => Promise<void>;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
@@ -277,7 +282,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     if (!movedItem) return;
 
     const targetStatus = destination.droppableId as KanbanStatus;
-    const destListId = destCol.items[0]?.sourceListId || movedItem.sourceListId;
+    const destListId = destCol.listId || destCol.items[0]?.sourceListId || movedItem.sourceListId;
     const updatedCard: KanbanItem = {
       ...movedItem,
       status: targetStatus,
@@ -314,7 +319,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
     // 3. PERSISTIR EN GOOGLE TASKS (Mover tarea de lista remota)
     try {
-      await onMoveTask(movedItem, targetStatus, newPosition);
+      const previousId =
+        destination.index > 0 ? targetColItems[destination.index - 1]?.id ?? null : null;
+      await onMoveTask(movedItem, targetStatus, newPosition, previousId);
     } catch (err: any) {
       // 4. ROLLBACK AUTOMÁTICO
       console.error('[KanbanBoard] Error al persistir movimiento en Google Tasks:', err);

@@ -7,6 +7,13 @@ import { KanbanColumn, KanbanItem, KanbanStatus, SubTaskItem, User } from './typ
 import { googleTasksDirect } from './services/googleTasksDirect';
 import { RefreshCw, ShieldCheck, Download, Search, X } from 'lucide-react';
 
+const STATUS_LABELS: Record<KanbanStatus, string> = {
+  todo: 'Para hacer',
+  in_progress: 'En progreso',
+  review: 'En revisión',
+  done: 'Terminado',
+};
+
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | undefined>(undefined);
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
@@ -19,8 +26,16 @@ export const App: React.FC = () => {
   const [isSessionPaused, setIsSessionPaused] = useState(googleTasksDirect.getIsSessionPaused());
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [autoSyncInterval, setAutoSyncInterval] = useState<number>(
+    () => googleTasksDirect.getSettings().autoSyncInterval || 60
+  );
 
   const syncIntervalRef = useRef<number | null>(null);
+  const isSyncingRef = useRef(isSyncing);
+
+  useEffect(() => {
+    isSyncingRef.current = isSyncing;
+  }, [isSyncing]);
 
   const addToast = (type: 'success' | 'error' | 'info', text: string) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -99,11 +114,10 @@ export const App: React.FC = () => {
 
   // Sincronización periódica automática configurable (se pausa si la sesión está en pausa)
   useEffect(() => {
-    const settings = googleTasksDirect.getSettings();
-    const intervalMs = (settings.autoSyncInterval || 60) * 1000;
+    const intervalMs = Math.max(10, autoSyncInterval) * 1000;
 
     syncIntervalRef.current = window.setInterval(() => {
-      if (!isSyncing && !googleTasksDirect.getIsSessionPaused()) {
+      if (!isSyncingRef.current && !googleTasksDirect.getIsSessionPaused()) {
         loadBoard();
       }
     }, intervalMs);
@@ -111,7 +125,7 @@ export const App: React.FC = () => {
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [isSyncing, loadBoard]);
+  }, [autoSyncInterval, loadBoard]);
 
   const normalizeText = (text: string): string => {
     return text
@@ -158,16 +172,27 @@ export const App: React.FC = () => {
   const handleMoveTask = async (
     task: KanbanItem,
     targetStatus: KanbanStatus,
-    targetPosition: number
+    targetPosition: number,
+    previousId?: string | null
   ) => {
     try {
       const updated = await googleTasksDirect.moveTaskBetweenColumns(
         task,
         targetStatus,
-        targetPosition
+        targetPosition,
+        previousId
       );
       setColumns((prev) =>
         prev.map((col) => {
+          if (task.status === targetStatus && col.id === targetStatus) {
+            const itemsWithout = col.items.filter(
+              (i) => i.id !== task.id && i.id !== updated.id
+            );
+            return {
+              ...col,
+              items: [...itemsWithout, updated].sort((a, b) => a.position - b.position),
+            };
+          }
           if (col.id === task.status) {
             return {
               ...col,
@@ -212,7 +237,7 @@ export const App: React.FC = () => {
         })
       );
       setTotalCount((prev) => prev + 1);
-      addToast('success', `Tarea agregada a "${status}".`);
+      addToast('success', `Tarea agregada a "${STATUS_LABELS[status] || status}".`);
     } catch (err: any) {
       addToast('error', `Error creando tarea: ${err.message}`);
       await loadBoard();
@@ -720,7 +745,10 @@ export const App: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onNotify={addToast}
-        onSettingsSaved={loadBoard}
+        onSettingsSaved={() => {
+          setAutoSyncInterval(googleTasksDirect.getSettings().autoSyncInterval || 60);
+          loadBoard();
+        }}
       />
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
