@@ -427,9 +427,14 @@ export const App: React.FC = () => {
           ...col,
           items: col.items
             .filter((i) => i.id !== task.id)
-            .map((i) =>
-              i.id === parent.id ? { ...i, subtasks: [...(i.subtasks || []), ...newSubs] } : i
-            ),
+            .map((i) => {
+              if (i.id !== parent.id) return i;
+              const newSubIds = new Set(newSubs.map((s) => s.id));
+              const cleanExisting = (i.subtasks || []).filter(
+                (s) => !newSubIds.has(s.id) && s.id !== task.id
+              );
+              return { ...i, subtasks: [...cleanExisting, ...newSubs] };
+            }),
         }))
       );
       setTotalCount((c) => Math.max(0, c - 1));

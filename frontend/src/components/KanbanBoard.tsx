@@ -277,9 +277,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     if (!movedItem) return;
 
     const targetStatus = destination.droppableId as KanbanStatus;
+    const destListId = destCol.items[0]?.sourceListId || movedItem.sourceListId;
     const updatedCard: KanbanItem = {
       ...movedItem,
       status: targetStatus,
+      sourceListId: destListId,
+      sourceListName: destCol.title,
     };
 
     let newColumns: KanbanColumnType[];

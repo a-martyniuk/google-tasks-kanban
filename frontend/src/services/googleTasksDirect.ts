@@ -883,7 +883,10 @@ class GoogleTasksDirectService {
 
   private async resolveListId(item: KanbanItem): Promise<string> {
     const mapping = this.listMapping || (await this.ensureKanbanLists());
-    return item.sourceListId || mapping[item.status].listId;
+    if (item.status && mapping[item.status]?.listId) {
+      return mapping[item.status].listId;
+    }
+    return item.sourceListId || mapping.todo.listId;
   }
 
   private findMockItem(id: string): KanbanItem | undefined {
@@ -934,33 +937,107 @@ class GoogleTasksDirectService {
     const lastExisting = [...(parent.subtasks || [])].reverse().find((s) => !s.id.startsWith('temp-'));
     const anchor = lastExisting?.id || null;
 
-    // 1. Mover primero las subtareas propias (Google no permite mover una tarea con hijos bajo otro padre)
-    const movedChildren: SubTaskItem[] = [];
-    let prev = anchor;
-    for (const child of children) {
-      const moved = await this.moveGoogleTask(srcListId, child.id, {
-        parent: parent.id,
-        previous: prev,
-        destinationTasklist: destListId,
-      });
-      const newId = moved?.id || child.id;
-      movedChildren.push({
-        ...child,
-        id: newId,
-        status: (moved?.status as SubTaskItem['status']) || child.status,
-        completed: moved?.completed ?? child.completed ?? null,
-      });
-      prev = newId;
+    // Función fallback robusta: crear directamente bajo parent en destListId y borrar origen
+    const fallbackRecreateAsSubtask = async (): Promise<SubTaskItem[]> => {
+      // 1. Crear la tarea como subtarea directamente bajo parent en destListId
+      const createRes = await this.fetchWithAuth(
+        `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${parent.id}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: task.title,
+            notes: task.description || undefined,
+            due: task.dueDate ? new Date(task.dueDate).toISOString() : undefined,
+            status: task.sourceStatus === 'completed' ? 'completed' : 'needsAction',
+          }),
+        }
+      );
+
+      if (!createRes.ok) {
+        throw new Error(`Error al crear subtarea en Google Tasks: ${createRes.statusText}`);
+      }
+
+      const createdMain = await createRes.json();
+      const mainSub: SubTaskItem = {
+        id: createdMain.id,
+        title: createdMain.title,
+        status: createdMain.status || 'needsAction',
+        completed: createdMain.completed || null,
+      };
+
+      // 2. Replicar los hijos de task también como subtareas de parent (Google solo admite 1 nivel)
+      const replicatedChildren: SubTaskItem[] = [];
+      for (const child of children) {
+        try {
+          const childRes = await this.fetchWithAuth(
+            `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${parent.id}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: child.title,
+                status: child.status || 'needsAction',
+              }),
+            }
+          );
+          if (childRes.ok) {
+            const createdChild = await childRes.json();
+            replicatedChildren.push({
+              id: createdChild.id,
+              title: createdChild.title,
+              status: createdChild.status || 'needsAction',
+              completed: createdChild.completed || null,
+            });
+          }
+        } catch (e) {
+          console.warn('[nestTaskUnder] Error replicando hijo como subtarea:', e);
+        }
+      }
+
+      // 3. Eliminar la tarea original de su lista fuente (y destListId si difiere)
+      try {
+        await this.fetchWithAuth(
+          `https://tasks.googleapis.com/tasks/v1/lists/${srcListId}/tasks/${task.id}`,
+          { method: 'DELETE' }
+        );
+      } catch (delErr) {
+        if (srcListId !== destListId) {
+          try {
+            await this.fetchWithAuth(
+              `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks/${task.id}`,
+              { method: 'DELETE' }
+            );
+          } catch {}
+        }
+      }
+
+      return [mainSub, ...replicatedChildren];
+    };
+
+    // Si están en la misma lista y no tiene hijos, intentar moveGoogleTask nativo
+    if (srcListId === destListId && children.length === 0) {
+      try {
+        let movedTask: any;
+        try {
+          movedTask = await this.moveGoogleTask(srcListId, task.id, {
+            parent: parent.id,
+            previous: anchor,
+          });
+        } catch {
+          // Si falló por anchor inválido u oculto, reintentar sin anchor
+          movedTask = await this.moveGoogleTask(srcListId, task.id, {
+            parent: parent.id,
+          });
+        }
+        return [taskAsSub(movedTask?.id || task.id, movedTask)];
+      } catch (moveErr) {
+        console.warn('[nestTaskUnder] tasks.move falló, usando fallback de recreación:', moveErr);
+      }
     }
 
-    // 2. Mover la tarea (ya sin hijos) justo después de la última subtarea original del padre
-    const movedTask = await this.moveGoogleTask(srcListId, task.id, {
-      parent: parent.id,
-      previous: anchor,
-      destinationTasklist: destListId,
-    });
-
-    return [taskAsSub(movedTask?.id || task.id, movedTask), ...movedChildren];
+    // Para cross-list, tareas con subtareas, o si tasks.move falló con 404:
+    return await fallbackRecreateAsSubtask();
   }
 
   /**
@@ -1004,10 +1081,38 @@ class GoogleTasksDirectService {
     const srcListId = await this.resolveListId(parent);
     const destListId = mapping[targetStatus].listId;
 
-    // Sin `parent` => pasa a ser tarea de primer nivel; sin `previous` => queda primera en la lista
-    const moved = await this.moveGoogleTask(srcListId, sub.id, {
-      destinationTasklist: destListId,
-    });
+    let moved: any;
+    try {
+      // Sin `parent` => pasa a ser tarea de primer nivel; sin `previous` => queda primera en la lista
+      moved = await this.moveGoogleTask(srcListId, sub.id, {
+        destinationTasklist: destListId,
+      });
+    } catch (moveErr) {
+      console.warn('[promoteSubtask] tasks.move falló, usando creación directa:', moveErr);
+      const createRes = await this.fetchWithAuth(
+        `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: sub.title,
+            status: sub.status || 'needsAction',
+          }),
+        }
+      );
+      if (!createRes.ok) {
+        throw new Error(`Error al convertir subtarea en tarea: ${createRes.statusText}`);
+      }
+      moved = await createRes.json();
+      try {
+        await this.fetchWithAuth(
+          `https://tasks.googleapis.com/tasks/v1/lists/${srcListId}/tasks/${sub.id}`,
+          { method: 'DELETE' }
+        );
+      } catch {}
+    }
 
     const settings = this.getSettings();
     if (targetStatus === 'done' && settings.completeInSourceOnDone && moved?.status !== 'completed') {
@@ -1062,17 +1167,66 @@ class GoogleTasksDirectService {
 
     const srcListId = await this.resolveListId(fromParent);
     const destListId = await this.resolveListId(toParent);
-    const moved = await this.moveGoogleTask(srcListId, sub.id, {
-      parent: toParent.id,
-      previous: previousId && !previousId.startsWith('temp-') ? previousId : null,
-      destinationTasklist: destListId,
-    });
+
+    // Si ambas tarjetas están en la misma lista, intentar moveGoogleTask nativo
+    if (srcListId === destListId) {
+      try {
+        let moved: any;
+        try {
+          moved = await this.moveGoogleTask(srcListId, sub.id, {
+            parent: toParent.id,
+            previous: previousId && !previousId.startsWith('temp-') ? previousId : null,
+          });
+        } catch {
+          moved = await this.moveGoogleTask(srcListId, sub.id, {
+            parent: toParent.id,
+          });
+        }
+
+        return {
+          ...sub,
+          id: moved?.id || sub.id,
+          status: (moved?.status as SubTaskItem['status']) || sub.status,
+          completed: moved?.completed ?? sub.completed ?? null,
+        };
+      } catch (moveErr) {
+        console.warn('[moveSubtaskToParent] tasks.move falló, usando fallback:', moveErr);
+      }
+    }
+
+    // Fallback para cross-list o fallo de tasks.move:
+    // Crear la subtarea directamente bajo toParent en destListId y borrar de srcListId
+    const createRes = await this.fetchWithAuth(
+      `https://tasks.googleapis.com/tasks/v1/lists/${destListId}/tasks?parent=${toParent.id}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: sub.title,
+          status: sub.status || 'needsAction',
+        }),
+      }
+    );
+
+    if (!createRes.ok) {
+      throw new Error(`Error al mover subtarea a nueva tarjeta: ${createRes.statusText}`);
+    }
+
+    const created = await createRes.json();
+
+    // Eliminar la subtarea anterior en srcListId
+    try {
+      await this.fetchWithAuth(
+        `https://tasks.googleapis.com/tasks/v1/lists/${srcListId}/tasks/${sub.id}`,
+        { method: 'DELETE' }
+      );
+    } catch {}
 
     return {
-      ...sub,
-      id: moved?.id || sub.id,
-      status: (moved?.status as SubTaskItem['status']) || sub.status,
-      completed: moved?.completed ?? sub.completed ?? null,
+      id: created.id,
+      title: created.title,
+      status: created.status || 'needsAction',
+      completed: created.completed || null,
     };
   }
 
