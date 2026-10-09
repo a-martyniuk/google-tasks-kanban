@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Draggable, Droppable } from '@hello-pangea/dnd';
 import {
   Calendar,
@@ -11,6 +11,7 @@ import {
   Check,
   X,
   GripVertical,
+  CornerDownRight,
 } from 'lucide-react';
 import { KanbanItem, SubTaskItem } from '../types';
 import { SUBTASK_DND_TYPE, SUBTASK_DRAG_PREFIX, SUBLIST_DROP_PREFIX } from './dndIds';
@@ -20,6 +21,10 @@ interface KanbanCardProps {
   index: number;
   /** Título de la columna que contiene la tarjeta (para ocultar la lista de origen si es la misma) */
   columnTitle?: string;
+  /** Indica si hay una subtarea siendo arrastrada en el tablero */
+  isDraggingSubtask?: boolean;
+  /** ID del padre desde donde se arrastra la subtarea */
+  draggingFromParentId?: string | null;
   onDelete?: () => void;
   onToggleSubtask?: (task: KanbanItem, subtask: SubTaskItem) => void;
   onAddSubtask?: (task: KanbanItem, title: string) => Promise<void>;
@@ -39,6 +44,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   item,
   index,
   columnTitle,
+  isDraggingSubtask = false,
+  draggingFromParentId = null,
   onDelete,
   onToggleSubtask,
   onAddSubtask,
@@ -51,6 +58,16 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+  const prevSubtasksCountRef = useRef(item.subtasks?.length || 0);
+
+  // Abrir acordeón automáticamente si se añaden o asignan subtareas a esta tarjeta
+  useEffect(() => {
+    const currentCount = item.subtasks?.length || 0;
+    if (currentCount > prevSubtasksCountRef.current) {
+      setSubtasksOpen(true);
+    }
+    prevSubtasksCountRef.current = currentCount;
+  }, [item.subtasks?.length]);
 
   // Edición inline de subtareas
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
@@ -231,6 +248,15 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     !!columnTitle &&
     item.sourceListName.trim().toLowerCase() !== columnTitle.trim().toLowerCase();
   const hasMeta = !!due || subtasks.length > 0 || showSourceList;
+
+  // Google Tasks API solo admite 1 nivel de subtareas. Solo tarjetas principales pueden recibir subtareas.
+  const canReceiveSubtasks = !item.parentId;
+  // Esta tarjeta es candidata a recibir una subtarea arrastrada (si no es la tarjeta origen de la subtarea)
+  const isTargetForSubtaskDrop =
+    isDraggingSubtask && canReceiveSubtasks && item.id !== draggingFromParentId;
+  // Montar el Droppable si tiene subtareas o si se está arrastrando una subtarea
+  const shouldRenderSublistDroppable =
+    canReceiveSubtasks && (subtasks.length > 0 || isDraggingSubtask);
 
   const handleSubmitSubtask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,23 +469,49 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </div>
           )}
 
-          {/* Lista de subtareas (colapsable y arrastrable) */}
-          {subtasksOpen && subtasks.length > 0 && (
+          {/* Lista de subtareas (colapsable y receptora de subtareas arrastradas) */}
+          {shouldRenderSublistDroppable && (
             <Droppable
               droppableId={`${SUBLIST_DROP_PREFIX}${item.id}`}
               type={SUBTASK_DND_TYPE}
             >
-              {(subDropProvided, subDropSnapshot) => (
-                <div
-                  ref={subDropProvided.innerRef}
-                  {...subDropProvided.droppableProps}
-                  className={`mt-1.5 pt-1.5 border-t border-slate-100 space-y-0.5 rounded transition-colors ${
-                    subDropSnapshot.isDraggingOver
-                      ? 'bg-blue-50/60 ring-1 ring-blue-300 ring-dashed p-1'
-                      : ''
-                  }`}
-                >
-                  {subtasks.map((sub, subIndex) => {
+              {(subDropProvided, subDropSnapshot) => {
+                const isOver = subDropSnapshot.isDraggingOver;
+                return (
+                  <div
+                    ref={subDropProvided.innerRef}
+                    {...subDropProvided.droppableProps}
+                    className={`mt-1.5 pt-1 rounded transition-colors ${
+                      isTargetForSubtaskDrop
+                        ? isOver
+                          ? 'border-2 border-blue-500 bg-blue-50/80 p-2 ring-2 ring-blue-400/40'
+                          : 'border border-dashed border-blue-300 bg-blue-50/30 p-1.5'
+                        : subtasksOpen && subtasks.length > 0
+                        ? 'border-t border-slate-100 space-y-0.5'
+                        : 'hidden'
+                    }`}
+                  >
+                    {/* Zona destacada para soltar y asignar subtarea a esta tarjeta */}
+                    {isTargetForSubtaskDrop && (
+                      <div
+                        className={`flex items-center justify-center gap-1.5 py-1 px-2 rounded text-[11px] font-semibold transition-colors mb-1 ${
+                          isOver
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-blue-700 bg-blue-100/60'
+                        }`}
+                      >
+                        <CornerDownRight className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {isOver
+                            ? 'Soltar para asignar a esta tarea ↳'
+                            : '+ Asignar como subtarea'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Subtareas existentes (mostradas si el acordeón está abierto) */}
+                    {subtasksOpen &&
+                      subtasks.map((sub, subIndex) => {
                     const isDone = sub.status === 'completed';
                     return (
                       <Draggable
@@ -589,10 +641,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                         )}
                       </Draggable>
                     );
-                  })}
-                  {subDropProvided.placeholder}
-                </div>
-              )}
+                    })}
+                    {subDropProvided.placeholder}
+                  </div>
+                );
+              }}
             </Droppable>
           )}
 

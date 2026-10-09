@@ -9,6 +9,8 @@ interface KanbanColumnProps {
   column: KanbanColumnType;
   /** true mientras se arrastra una subtarea: muestra la zona "convertir en tarea" */
   isDraggingSubtask?: boolean;
+  /** ID de la tarjeta padre de donde se arrastra la subtarea para evitar auto-asignación */
+  draggingFromParentId?: string | null;
   /** Permite soltar una tarjeta sobre otra para convertirla en subtarea */
   canNest?: boolean;
   /** Permite soltar subtareas en la columna para convertirlas en tarea */
@@ -59,6 +61,7 @@ const COLUMN_THEMES: Record<
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   column,
   isDraggingSubtask = false,
+  draggingFromParentId = null,
   canNest = false,
   canPromote = false,
   onAddTask,
@@ -233,6 +236,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 item={item}
                 index={index}
                 columnTitle={column.title}
+                isDraggingSubtask={isDraggingSubtask}
+                draggingFromParentId={draggingFromParentId}
                 onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
                 onToggleSubtask={onToggleSubtask}
                 onAddSubtask={onAddSubtask}

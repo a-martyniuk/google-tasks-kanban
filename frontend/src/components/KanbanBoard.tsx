@@ -48,6 +48,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 }) => {
   const [columns, setColumns] = useState<KanbanColumnType[]>(initialColumns);
   const [isDraggingSubtask, setIsDraggingSubtask] = useState(false);
+  const [draggingFromParentId, setDraggingFromParentId] = useState<string | null>(null);
 
   useEffect(() => {
     setColumns(initialColumns);
@@ -79,9 +80,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     return undefined;
   };
 
-  /** Mostrar zonas "convertir en tarea" antes de que la librería mida el DOM */
+  /** Mostrar zonas de soltado y de asignación antes de que la librería mida el DOM */
   const handleBeforeCapture = (before: BeforeCapture) => {
-    setIsDraggingSubtask(before.draggableId.startsWith(SUBTASK_DRAG_PREFIX));
+    const isSub = before.draggableId.startsWith(SUBTASK_DRAG_PREFIX);
+    setIsDraggingSubtask(isSub);
+    if (isSub) {
+      const subId = before.draggableId.slice(SUBTASK_DRAG_PREFIX.length);
+      const parent = columns
+        .flatMap((c) => c.items)
+        .find((item) => item.subtasks?.some((s) => s.id === subId));
+      setDraggingFromParentId(parent?.id || null);
+    } else {
+      setDraggingFromParentId(null);
+    }
   };
 
   // ---------- Soltar una tarjeta sobre otra: convertir en subtarea ----------
@@ -188,9 +199,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       if (!toParent) return;
       if (fromParent.id === toParent.id && source.index === destination.index) return;
 
+      if (toParent.parentId) {
+        onNotify('error', 'No se puede anidar dentro de una subtarea: Google Tasks admite un solo nivel.');
+        return;
+      }
+
       const targetSubs = (toParent.subtasks || []).filter((s) => s.id !== sub.id);
-      targetSubs.splice(destination.index, 0, sub);
-      const previousId = destination.index > 0 ? targetSubs[destination.index - 1]?.id ?? null : null;
+      let targetIndex = destination.index;
+      // Si se mueve a otra tarjeta y el índice supera los existentes, ubicar al final
+      if (fromParent.id !== toParent.id && targetIndex >= targetSubs.length) {
+        targetIndex = targetSubs.length;
+      }
+      targetSubs.splice(targetIndex, 0, sub);
+      const previousId = targetIndex > 0 ? targetSubs[targetIndex - 1]?.id ?? null : null;
 
       setColumns((prev) =>
         prev.map((col) => ({
@@ -206,7 +227,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       );
 
       try {
-        await onMoveSubtask(sub, fromParent, toParent, previousId, destination.index);
+        await onMoveSubtask(sub, fromParent, toParent, previousId, targetIndex);
       } catch (err: any) {
         setColumns(previousColumns);
         onNotify('error', `Error al mover subtarea: ${err.message || 'Fallo de conexión con Google'}`);
@@ -216,6 +237,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
   const handleDragEnd = async (result: DropResult) => {
     setIsDraggingSubtask(false);
+    setDraggingFromParentId(null);
 
     if (result.type === SUBTASK_DND_TYPE) {
       await handleSubtaskDragEnd(result);
@@ -306,6 +328,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             key={column.id}
             column={column}
             isDraggingSubtask={isDraggingSubtask}
+            draggingFromParentId={draggingFromParentId}
             canNest={!!onNestTask}
             canPromote={!!onPromoteSubtask}
             onAddTask={onAddTask}
