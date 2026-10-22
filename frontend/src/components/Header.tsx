@@ -1,6 +1,7 @@
 import React from 'react';
 import { RefreshCw, Settings, LogOut, CheckCircle2, User as UserIcon, AlertTriangle, Moon, Sun } from 'lucide-react';
 import { User } from '../types';
+import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
   user?: User;
@@ -29,8 +30,10 @@ export const Header: React.FC<HeaderProps> = ({
   isDarkMode,
   toggleDarkMode,
 }) => {
+  const { t } = useTranslation();
+
   const formatLastSync = (dateString: string | null) => {
-    if (!dateString) return 'Pendiente';
+    if (!dateString) return t('header.pending');
     const date = new Date(dateString);
     return date.toLocaleTimeString('es-ES', {
       hour: '2-digit',
@@ -49,10 +52,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight">
-              MI KANBAN
+              {t('header.title')}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
-              Google Tasks Sync Layer (Zero-DB)
+              {t('header.subtitle')}
             </p>
           </div>
         </div>
@@ -62,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Indicador de última sincronización */}
           <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Último sync: {formatLastSync(lastSyncedAt)}</span>
+            <span>{t('header.lastSync', { time: formatLastSync(lastSyncedAt) })}</span>
           </div>
 
           {/* Botón Sincronizar Ahora */}
@@ -74,12 +77,12 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed'
                 : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 active:scale-95'
             }`}
-            title="Sincronizar tareas con Google Tasks"
+            title={t('header.sync')}
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}
             />
-            <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+            <span>{isSyncing ? t('header.syncing') : t('header.sync')}</span>
           </button>
 
           {/* Alerta de sesión pausada / expirada */}
@@ -87,10 +90,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onRenewSession}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-900 dark:text-amber-100 bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 dark:hover:bg-amber-800/60 border border-amber-300 dark:border-amber-700 transition-all active:scale-95 cursor-pointer shadow-2xs animate-pulse"
-              title="Tu sesión con Google Tasks expiró. Haz clic para renovarla en 1 clic sin perder tus tareas."
+              title={t('header.renewTooltip')}
             >
               <AlertTriangle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
-              <span>Renovar sesión Google</span>
+              <span>{t('header.renewSession')}</span>
             </button>
           )}
 
@@ -99,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={toggleDarkMode}
               className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-              title="Alternar tema claro/oscuro"
+              title={t('header.toggleTheme')}
             >
               {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -109,10 +112,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenSettings}
             className="inline-flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 shadow-2xs transition-all active:scale-95 cursor-pointer"
-            title="Configuración de cuentas y fuentes"
+            title={t('header.settings')}
           >
             <Settings className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-            <span className="hidden sm:inline">Configuración</span>
+            <span className="hidden sm:inline">{t('header.settings')}</span>
           </button>
 
           {/* Perfil de Usuario o Botón Vincular */}
@@ -146,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onLogout}
                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors cursor-pointer"
-                title="Cerrar sesión"
+                title={t('header.logout')}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -154,12 +157,12 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 rounded">
-                Modo Demo
+                {t('header.demoMode')}
               </span>
               <button
                 onClick={onLoginGoogle}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all active:scale-95 cursor-pointer"
-                title="Conectar directamente con tu cuenta de Google Tasks"
+                title={t('header.connectGmail')}
               >
                 <svg className="w-3.5 h-3.5 shrink-0 bg-white rounded-full p-0.5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -167,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
-                <span>Vincular con Gmail</span>
+                <span>{t('header.connectGmail')}</span>
               </button>
             </div>
           )}

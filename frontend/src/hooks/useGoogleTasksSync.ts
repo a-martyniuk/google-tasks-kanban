@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { User } from '../types';
 import { googleTasksDirect } from '../services/googleTasksDirect';
+import { useTranslation } from 'react-i18next';
 
 export const useGoogleTasksSync = (addToast: (type: 'success' | 'error' | 'info', text: string) => void, loadBoard: () => Promise<void>) => {
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | undefined>(undefined);
   const [isSessionPaused, setIsSessionPaused] = useState(googleTasksDirect.getIsSessionPaused());
 
@@ -63,10 +65,10 @@ export const useGoogleTasksSync = (addToast: (type: 'success' | 'error' | 'info'
           isDemo: false,
         });
       }
-      addToast('success', '¡Conectado exitosamente con tu cuenta de Google!');
+      addToast('success', t('toasts.loginSuccess'));
       await loadBoard();
     } catch (err: any) {
-      addToast('error', err.message || 'Error al conectar con Google.');
+      addToast('error', t('toasts.loginError', { message: err.message || 'Error al conectar con Google.' }));
     }
   };
 
@@ -84,10 +86,10 @@ export const useGoogleTasksSync = (addToast: (type: 'success' | 'error' | 'info'
           isDemo: false,
         });
       }
-      addToast('success', 'Sesión de Google renovada exitosamente.');
+      addToast('success', t('toasts.renewSuccess'));
       await loadBoard();
     } catch (err: any) {
-      addToast('error', `Error al renovar sesión: ${err.message}`);
+      addToast('error', t('toasts.renewError', { message: err.message }));
     }
   };
 
@@ -102,7 +104,7 @@ export const useGoogleTasksSync = (addToast: (type: 'success' | 'error' | 'info'
       isDemo: true,
     });
     loadBoard();
-    addToast('info', 'Sesión cerrada. Regresando a modo Demo.');
+    addToast('info', t('toasts.logout'));
   };
 
   return {

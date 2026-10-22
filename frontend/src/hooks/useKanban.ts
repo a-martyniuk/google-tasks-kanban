@@ -2,19 +2,14 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { KanbanColumn, KanbanItem, KanbanStatus, SubTaskItem } from '../types';
 import { googleTasksDirect } from '../services/googleTasksDirect';
 import { ToastMessage } from '../components/Toast';
-
-const STATUS_LABELS: Record<KanbanStatus, string> = {
-  todo: 'Para hacer',
-  in_progress: 'En progreso',
-  review: 'En revisión',
-  done: 'Terminado',
-};
+import { useTranslation } from 'react-i18next';
 
 export const useKanban = (
   addToast: (type: 'success' | 'error' | 'info', text: string) => void,
   searchQuery: string,
   autoSyncInterval: number
 ) => {
+  const { t } = useTranslation();
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -38,7 +33,7 @@ export const useKanban = (
       setLastSyncedAt(data.lastSyncedAt);
     } catch (err: any) {
       console.error('Error cargando tareas:', err);
-      addToast('error', `Error al cargar tablero: ${err.message}`);
+      addToast('error', t('toasts.syncError', { message: err.message }));
     } finally {
       setLoading(false);
     }
@@ -92,9 +87,9 @@ export const useKanban = (
     setIsSyncing(true);
     try {
       await loadBoard();
-      addToast('success', 'Tablero sincronizado en vivo con Google Tasks.');
+      addToast('success', t('toasts.syncSuccess'));
     } catch (err: any) {
-      addToast('error', `Error en sincronización: ${err.message}`);
+      addToast('error', t('toasts.syncManualError', { message: err.message }));
     } finally {
       setIsSyncing(false);
     }
@@ -145,7 +140,7 @@ export const useKanban = (
       );
     } catch (err: any) {
       console.error('Error al mover tarea:', err);
-      addToast('error', `Error al mover tarea: ${err.message}`);
+      addToast('error', t('toasts.moveError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -169,9 +164,9 @@ export const useKanban = (
         })
       );
       setTotalCount((prev) => prev + 1);
-      addToast('success', `Tarea agregada a "${STATUS_LABELS[status] || status}".`);
+      addToast('success', t('toasts.addSuccess', { status: t(`columns.${status}`, { defaultValue: status }) }));
     } catch (err: any) {
-      addToast('error', `Error creando tarea: ${err.message}`);
+      addToast('error', t('toasts.addError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -188,9 +183,9 @@ export const useKanban = (
 
     try {
       await googleTasksDirect.deleteTask(task);
-      addToast('info', `Tarea "${task.title}" eliminada de Google Tasks.`);
+      addToast('info', t('toasts.deleteSuccess', { title: task.title }));
     } catch (err: any) {
-      addToast('error', `Error al eliminar tarea: ${err.message}`);
+      addToast('error', t('toasts.deleteError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -216,9 +211,9 @@ export const useKanban = (
     try {
       const listId = task.sourceListId || 'mock';
       await googleTasksDirect.deleteSubtask(listId, subtask.id);
-      addToast('info', `Subtarea "${subtask.title}" eliminada.`);
+      addToast('info', t('toasts.deleteSubtaskSuccess', { title: subtask.title }));
     } catch (err: any) {
-      addToast('error', `Error al eliminar subtarea: ${err.message}`);
+      addToast('error', t('toasts.deleteSubtaskError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -248,9 +243,9 @@ export const useKanban = (
 
     try {
       await googleTasksDirect.updateTask(task, updates);
-      addToast('success', `Tarea "${updates.title || task.title}" actualizada.`);
+      addToast('success', t('toasts.updateSuccess', { title: updates.title || task.title }));
     } catch (err: any) {
-      addToast('error', `Error al actualizar tarea: ${err.message}`);
+      addToast('error', t('toasts.updateError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -282,7 +277,7 @@ export const useKanban = (
       const listId = task.sourceListId || 'mock';
       await googleTasksDirect.toggleSubtask(listId, subtask.id, newStatus === 'completed');
     } catch (err: any) {
-      addToast('error', `Error al actualizar subtarea: ${err.message}`);
+      addToast('error', t('toasts.updateSubtaskStatusError', { message: err.message }));
       loadBoard();
     }
   };
@@ -329,9 +324,9 @@ export const useKanban = (
           };
         })
       );
-      addToast('success', `Subtarea "${title}" agregada en Google Tasks.`);
+      addToast('success', t('toasts.addSubtaskSuccess', { title }));
     } catch (err: any) {
-      addToast('error', `Error al crear subtarea: ${err.message}`);
+      addToast('error', t('toasts.addSubtaskError', { message: err.message }));
       loadBoard();
     }
   };
@@ -366,9 +361,9 @@ export const useKanban = (
     try {
       const listId = task.sourceListId || 'mock';
       await googleTasksDirect.updateSubtask(listId, subtask.id, trimmed);
-      addToast('success', 'Subtarea actualizada.');
+      addToast('success', t('toasts.updateSubtaskSuccess'));
     } catch (err: any) {
-      addToast('error', `Error al actualizar subtarea: ${err.message}`);
+      addToast('error', t('toasts.updateSubtaskTitleError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -393,10 +388,10 @@ export const useKanban = (
         }))
       );
       setTotalCount((c) => Math.max(0, c - 1));
-      const extra = newSubs.length > 1 ? ` (+${newSubs.length - 1} subtareas)` : '';
-      addToast('success', `"${task.title}" ahora es subtarea de "${parent.title}"${extra}.`);
+      const extra = newSubs.length > 1 ? t('toasts.nestExtra', { count: newSubs.length - 1 }) : '';
+      addToast('success', t('toasts.nestSuccess', { taskTitle: task.title, parentTitle: parent.title, extra }));
     } catch (err: any) {
-      addToast('error', `Error al anidar tarea: ${err.message}`);
+      addToast('error', t('toasts.nestError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -422,9 +417,9 @@ export const useKanban = (
         })
       );
       setTotalCount((c) => c + 1);
-      addToast('success', `"${subtask.title}" ahora es una tarea.`);
+      addToast('success', t('toasts.promoteSuccess', { title: subtask.title }));
     } catch (err: any) {
-      addToast('error', `Error al convertir subtarea: ${err.message}`);
+      addToast('error', t('toasts.promoteError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -458,10 +453,10 @@ export const useKanban = (
         }))
       );
       if (fromParent.id !== toParent.id) {
-        addToast('success', `Subtarea "${subtask.title}" movida a "${toParent.title}".`);
+        addToast('success', t('toasts.moveSubtaskSuccess', { title: subtask.title, parentTitle: toParent.title }));
       }
     } catch (err: any) {
-      addToast('error', `Error al mover subtarea: ${err.message}`);
+      addToast('error', t('toasts.moveSubtaskError', { message: err.message }));
       await loadBoard();
     }
   };
@@ -470,16 +465,16 @@ export const useKanban = (
     if (isImporting) return;
     setIsImporting(true);
     try {
-      addToast('info', 'Consultando y migrando tareas desde "My Tasks"...');
+      addToast('info', t('toasts.importStart'));
       const count = await googleTasksDirect.importTasksFromDefaultList();
       if (count > 0) {
-        addToast('success', `¡Se importaron ${count} tareas/subtareas a "Para hacer"!`);
+        addToast('success', t('toasts.importSuccess', { count }));
         await loadBoard();
       } else {
-        addToast('info', 'No se encontraron tareas pendientes en tu lista "My Tasks".');
+        addToast('info', t('toasts.importEmpty'));
       }
     } catch (err: any) {
-      addToast('error', `Error importando tareas: ${err.message}`);
+      addToast('error', t('toasts.importError', { message: err.message }));
     } finally {
       setIsImporting(false);
     }

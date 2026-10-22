@@ -4,6 +4,7 @@ import { KanbanColumn as KanbanColumnType, KanbanItem, SubTaskItem } from '../ty
 import { KanbanCard } from './KanbanCard';
 import { Plus, X, Check, ArrowUpFromLine } from 'lucide-react';
 import { PROMOTE_DROP_PREFIX, SUBTASK_DND_TYPE } from './dndIds';
+import { useTranslation } from 'react-i18next';
 
 interface KanbanColumnProps {
   column: KanbanColumnType;
@@ -72,6 +73,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onUpdateSubtask,
   onUpdateTask,
 }) => {
+  const { t } = useTranslation();
   const theme = COLUMN_THEMES[column.id] || COLUMN_THEMES.todo;
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -103,7 +105,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${theme.dot}`} />
           <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm tracking-tight">
-            {column.title}
+            {t(`columns.${column.id}`, { defaultValue: column.title })}
           </h3>
         </div>
         <div className="flex items-center gap-1.5">
@@ -114,7 +116,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             <button
               onClick={() => setIsAdding(true)}
               className={`p-1 rounded-md transition-colors cursor-pointer ${theme.buttonHover}`}
-              title={`Añadir tarea a ${column.title}`}
+              title={t('columns.empty.addTask')}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -143,7 +145,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               }
             >
               <ArrowUpFromLine className="w-3.5 h-3.5 shrink-0" />
-              <span>Soltar para convertir en tarea</span>
+              <span>{t('columns.promoteToTask')}</span>
               {/* El placeholder se oculta para que la zona no cambie de tamaño */}
               <div className="hidden">{provided.placeholder}</div>
             </div>
@@ -167,14 +169,14 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         >
           <input
             type="text"
-            placeholder="Título de la tarea..."
+            placeholder={t('columns.form.title')}
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             className="w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900 dark:text-slate-100 bg-transparent"
           />
           <textarea
-            placeholder="Notas u observaciones (opcional)..."
+            placeholder={t('columns.form.notes')}
             rows={2}
             value={newNotes}
             onChange={(e) => setNewNotes(e.target.value)}
@@ -187,7 +189,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             className="w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 resize-none bg-transparent"
           />
           <div className="flex items-center justify-between text-xs pt-0.5">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Vencimiento:</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{t('columns.form.dueDate')}</span>
             <input
               type="date"
               value={newDueDate}
@@ -214,7 +216,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
               <Check className="w-3 h-3" />
-              <span>{isSubmitting ? 'Guardando...' : 'Crear'}</span>
+              <span>{isSubmitting ? t('columns.form.saving') : t('columns.form.create')}</span>
             </button>
           </div>
         </form>
@@ -250,10 +252,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
             {column.items.length === 0 && !snapshot.isDraggingOver && !isAdding && (
               <div className="h-36 border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl flex flex-col items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-medium gap-2 p-4 text-center">
-                {column.id === 'todo' && <span>No hay tareas pendientes. ¡Todo al día!</span>}
-                {column.id === 'in_progress' && <span>Aún no hay nada en progreso.</span>}
-                {column.id === 'review' && <span>No hay tareas en revisión.</span>}
-                {column.id === 'done' && <span>¡Buen trabajo! Cuando termines una tarea, muévela aquí.</span>}
+                <span>{t(`columns.empty.${column.id}`, { defaultValue: '' })}</span>
 
                 {onAddTask && (
                   <button
@@ -261,7 +260,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                     className="mt-1 px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-slate-800 dark:hover:text-white transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Añadir Tarea</span>
+                    <span>{t('columns.empty.addTask')}</span>
                   </button>
                 )}
               </div>
