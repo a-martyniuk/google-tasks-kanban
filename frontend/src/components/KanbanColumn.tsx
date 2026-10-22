@@ -226,8 +226,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`flex-1 rounded-xl p-1 transition-colors duration-200 min-h-[350px] ${
-              snapshot.isDraggingOver ? 'bg-blue-50/60 ring-2 ring-blue-400/30 ring-dashed' : ''
+            className={`flex-1 rounded-xl p-1 transition-all duration-200 min-h-[350px] ${
+              snapshot.isDraggingOver ? 'bg-blue-50/60 ring-2 ring-blue-500/40 ring-dashed shadow-inner' : ''
             }`}
           >
             {column.items.map((item, index) => (
@@ -249,14 +249,19 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             {provided.placeholder}
 
             {column.items.length === 0 && !snapshot.isDraggingOver && !isAdding && (
-              <div className="h-32 border-2 border-dashed border-slate-200/80 rounded-xl flex flex-col items-center justify-center text-xs text-slate-400 font-medium gap-1">
-                <span>Sin tareas</span>
+              <div className="h-36 border-2 border-dashed border-slate-300 bg-slate-50/50 rounded-xl flex flex-col items-center justify-center text-xs text-slate-500 font-medium gap-2 p-4 text-center">
+                {column.id === 'todo' && <span>No hay tareas pendientes. ¡Todo al día!</span>}
+                {column.id === 'in_progress' && <span>Aún no hay nada en progreso.</span>}
+                {column.id === 'review' && <span>No hay tareas en revisión.</span>}
+                {column.id === 'done' && <span>¡Buen trabajo! Cuando termines una tarea, muévela aquí.</span>}
+
                 {onAddTask && (
                   <button
                     onClick={() => setIsAdding(true)}
-                    className="text-[11px] text-blue-600 hover:underline cursor-pointer"
+                    className="mt-1 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 hover:text-slate-800 transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5"
                   >
-                    + Añadir aquí
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Añadir Tarea</span>
                   </button>
                 )}
               </div>
