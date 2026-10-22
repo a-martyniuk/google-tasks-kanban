@@ -8,6 +8,7 @@ dist/
 dist-ssr/
 build/
 *.tsbuildinfo
+dev-dist/
 
 # Entornos y secretos
 .env

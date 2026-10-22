@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Settings, LogOut, CheckCircle2, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, CheckCircle2, User as UserIcon, AlertTriangle, Moon, Sun } from 'lucide-react';
 import { User } from '../types';
 
 interface HeaderProps {
@@ -12,6 +12,8 @@ interface HeaderProps {
   onLoginGoogle: () => void;
   onLogout: () => void;
   onRenewSession?: () => void;
+  isDarkMode?: boolean;
+  toggleDarkMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLoginGoogle,
   onLogout,
   onRenewSession,
+  isDarkMode,
+  toggleDarkMode,
 }) => {
   const formatLastSync = (dateString: string | null) => {
     if (!dateString) return 'Pendiente';
@@ -36,18 +40,18 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Identidad / Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-sm shadow-blue-500/20">
+          <div className="w-9 h-9 rounded-xl bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold shadow-sm shadow-blue-500/20">
             <span className="text-base tracking-tighter">KB</span>
           </div>
           <div>
-            <h1 className="text-base font-bold text-slate-900 tracking-tight leading-tight">
+            <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight">
               MI KANBAN
             </h1>
-            <p className="text-xs text-slate-500 font-medium hidden sm:block">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
               Google Tasks Sync Layer (Zero-DB)
             </p>
           </div>
@@ -56,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Acciones principales */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Indicador de última sincronización */}
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/80">
+          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             <span>Último sync: {formatLastSync(lastSyncedAt)}</span>
           </div>
@@ -67,13 +71,13 @@ export const Header: React.FC<HeaderProps> = ({
             disabled={isSyncing}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-2xs cursor-pointer ${
               isSyncing
-                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 hover:border-slate-400 active:scale-95'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 active:scale-95'
             }`}
             title="Sincronizar tareas con Google Tasks"
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600' : 'text-slate-600'}`}
+              className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}
             />
             <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
@@ -82,55 +86,66 @@ export const Header: React.FC<HeaderProps> = ({
           {isSessionPaused && onRenewSession && (
             <button
               onClick={onRenewSession}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all active:scale-95 cursor-pointer shadow-2xs animate-pulse"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-900 dark:text-amber-100 bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 dark:hover:bg-amber-800/60 border border-amber-300 dark:border-amber-700 transition-all active:scale-95 cursor-pointer shadow-2xs animate-pulse"
               title="Tu sesión con Google Tasks expiró. Haz clic para renovarla en 1 clic sin perder tus tareas."
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
               <span>Renovar sesión Google</span>
+            </button>
+          )}
+
+          {/* Botón Theme Toggle */}
+          {toggleDarkMode && (
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              title="Alternar tema claro/oscuro"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
           )}
 
           {/* Botón Configuración */}
           <button
             onClick={onOpenSettings}
-            className="inline-flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 shadow-2xs transition-all active:scale-95 cursor-pointer"
             title="Configuración de cuentas y fuentes"
           >
-            <Settings className="w-3.5 h-3.5 text-slate-600" />
+            <Settings className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
             <span className="hidden sm:inline">Configuración</span>
           </button>
 
           {/* Perfil de Usuario o Botón Vincular */}
           {user && !user.isDemo ? (
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
               <div className="relative">
                 {user.avatarUrl ? (
                   <img
                     src={user.avatarUrl}
                     alt={user.name || 'Usuario'}
-                    className="w-7 h-7 rounded-full border border-slate-200 object-cover"
+                    className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-600 object-cover"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                  <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
                     <UserIcon className="w-4 h-4" />
                   </div>
                 )}
                 {isSessionPaused && (
                   <span
-                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white"
+                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white dark:ring-slate-800"
                     title="Sesión en pausa: haz clic en Renovar sesión Google"
                   />
                 )}
               </div>
 
               <div className="hidden lg:block text-left text-xs">
-                <p className="font-semibold text-slate-800 leading-none">{user.name || 'Usuario'}</p>
-                <p className="text-[10px] text-slate-400 font-mono mt-0.5">{user.email}</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 leading-none">{user.name || 'Usuario'}</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">{user.email}</p>
               </div>
 
               <button
                 onClick={onLogout}
-                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors cursor-pointer"
                 title="Cerrar sesión"
               >
                 <LogOut className="w-4 h-4" />
@@ -138,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 rounded">
+              <span className="hidden sm:inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 rounded">
                 Modo Demo
               </span>
               <button

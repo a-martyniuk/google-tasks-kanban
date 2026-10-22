@@ -147,7 +147,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}
-            className={`bg-white rounded-xl p-4 mb-3 border-2 border-blue-500 shadow-md ${
+            className={`bg-white dark:bg-slate-800 rounded-xl p-4 mb-3 border-2 border-blue-500 shadow-md ${
               snapshot.isDragging ? 'cursor-grabbing' : ''
             }`}
           >
@@ -166,30 +166,30 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-600">Editar tarea</span>
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Editar tarea</span>
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Título</label>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Título</label>
                 <input
                   type="text"
                   autoFocus
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900"
+                  className="w-full text-xs p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900 dark:text-slate-100 bg-transparent"
                   placeholder="Título de la tarea..."
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Notas / Descripción</label>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Notas / Descripción</label>
                 <textarea
                   rows={2}
                   value={editDescription}
@@ -200,18 +200,18 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                       handleSaveEdit();
                     }
                   }}
-                  className="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
+                  className="w-full text-xs p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 resize-none bg-transparent"
                   placeholder="Notas u observaciones... (Ctrl+Enter para guardar)"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Fecha de Vencimiento</label>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Fecha de Vencimiento</label>
                 <input
                   type="date"
                   value={editDueDate}
                   onChange={(e) => setEditDueDate(e.target.value)}
-                  className="text-xs px-2 py-1 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 w-full"
+                  className="text-xs px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 w-full bg-transparent"
                 />
               </div>
 
@@ -219,14 +219,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-800 rounded-lg border border-slate-200 cursor-pointer"
+                  className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving || !editTitle.trim()}
-                  className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-3 h-3" />
                   <span>{isSaving ? 'Guardando...' : 'Guardar'}</span>
@@ -314,12 +314,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`group relative bg-white rounded-lg px-3 py-2 mb-2 border transition-all duration-200 select-none ${
+          className={`group relative bg-white dark:bg-slate-800 rounded-lg px-3 py-2 mb-2 border transition-all duration-200 select-none ${
             snapshot.isDragging
               ? 'border-blue-500 shadow-2xl ring-4 ring-blue-500/30 scale-105 cursor-grabbing rotate-2 opacity-95 z-50'
               : snapshot.combineTargetFor
-              ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-400 ring-dashed'
-              : 'border-slate-200/80 shadow-xs hover:border-slate-300 hover:shadow-md cursor-grab'
+              ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 ring-dashed'
+              : 'border-slate-200/80 dark:border-slate-700 shadow-xs hover:border-slate-300 dark:hover:border-slate-500 hover:shadow-md cursor-grab'
           }`}
         >
           {/* Indicador visual cuando otra tarjeta se arrastra sobre esta para anidar */}
@@ -330,7 +330,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           )}
 
           {/* Acciones flotantes (no ocupan espacio en el layout) */}
-          <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-white/95 shadow-sm ring-1 ring-slate-200/70 px-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity">
+          <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-white/95 dark:bg-slate-800/95 shadow-sm ring-1 ring-slate-200/70 dark:ring-slate-700/70 px-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity">
             {onAddSubtask && (
               <button
                 type="button"
@@ -339,7 +339,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                   setShowAddSubtask(true);
                   setSubtasksOpen(true);
                 }}
-                className="p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded cursor-pointer"
                 title="Agregar subtarea"
               >
                 <ListPlus className="w-3.5 h-3.5" />
@@ -352,7 +352,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                   e.stopPropagation();
                   setIsEditing(true);
                 }}
-                className="p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded cursor-pointer"
                 title="Editar tarea"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -367,7 +367,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                     onDelete();
                   }
                 }}
-                className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded cursor-pointer"
                 title="Eliminar en Google Tasks"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -379,7 +379,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           <div className="flex items-start gap-1.5 flex-wrap">
             {item.sourceStatus === 'completed' && item.status !== 'done' && (
               <span
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0"
                 title="Completada desde Google Tasks"
               >
                 ✓ Hecha en móvil
@@ -388,8 +388,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             <h4
               className={`text-[13px] font-semibold leading-snug break-words ${
                 item.status === 'done' || item.sourceStatus === 'completed'
-                  ? 'text-slate-500 line-through decoration-slate-400'
-                  : 'text-slate-900'
+                  ? 'text-slate-500 dark:text-slate-500 line-through decoration-slate-400 dark:decoration-slate-600'
+                  : 'text-slate-900 dark:text-slate-100'
               }`}
             >
               {item.title}
@@ -398,7 +398,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Descripción / Notas */}
           {item.description && (
-            <div className="mt-0.5 text-xs text-slate-500 leading-snug">
+            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-snug">
               <p className={expanded ? 'whitespace-pre-line' : 'line-clamp-2'}>
                 {item.description}
               </p>
@@ -409,7 +409,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                     e.stopPropagation();
                     setExpanded(!expanded);
                   }}
-                  className="text-[11px] text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium inline-flex items-center gap-0.5 cursor-pointer"
                 >
                   {expanded ? (
                     <>
@@ -432,10 +432,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 <span
                   className={`inline-flex items-center gap-1 font-medium ${
                     due.isOverdue
-                      ? 'text-rose-600 font-semibold'
+                      ? 'text-rose-600 dark:text-rose-400 font-semibold'
                       : due.isToday
-                      ? 'text-amber-600 font-semibold'
-                      : 'text-slate-500'
+                      ? 'text-amber-600 dark:text-amber-500 font-semibold'
+                      : 'text-slate-500 dark:text-slate-400'
                   }`}
                   title={due.isOverdue ? 'Vencida' : 'Fecha de vencimiento'}
                 >
@@ -451,8 +451,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                     e.stopPropagation();
                     setSubtasksOpen(!subtasksOpen);
                   }}
-                  className={`inline-flex items-center gap-1 font-medium rounded px-1 -mx-1 hover:bg-slate-100 cursor-pointer ${
-                    completedSubtasks === subtasks.length ? 'text-emerald-600' : 'text-slate-500'
+                  className={`inline-flex items-center gap-1 font-medium rounded px-1 -mx-1 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer ${
+                    completedSubtasks === subtasks.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
                   }`}
                   title={subtasksOpen ? 'Ocultar subtareas' : 'Ver subtareas'}
                 >
@@ -460,9 +460,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                   <span>
                     {completedSubtasks}/{subtasks.length}
                   </span>
-                  <span className="w-8 h-1 bg-slate-100 rounded-full overflow-hidden">
+                  <span className="w-8 h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                     <span
-                      className="block h-full bg-blue-500 rounded-full transition-all duration-300"
+                      className="block h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
                       style={{ width: `${subtaskProgress}%` }}
                     />
                   </span>
@@ -476,7 +476,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
               {showSourceList && (
                 <span
-                  className="text-slate-400 font-medium truncate max-w-[120px]"
+                  className="text-slate-400 dark:text-slate-500 font-medium truncate max-w-[120px]"
                   title={`Lista: ${item.sourceListName}`}
                 >
                   • {item.sourceListName}
