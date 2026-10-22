@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Header } from './components/Header';
 import { KanbanBoard } from './components/KanbanBoard';
 import { SettingsModal } from './components/SettingsModal';
@@ -9,8 +9,10 @@ import { RefreshCw, ShieldCheck, Download, Search, X } from 'lucide-react';
 import { useKanban } from './hooks/useKanban';
 import { useGoogleTasksSync } from './hooks/useGoogleTasksSync';
 import { useDarkMode } from './hooks/useDarkMode';
+import { useTranslation, Trans } from 'react-i18next';
 
 export const App: React.FC = () => {
+  const { t } = useTranslation();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,17 +86,17 @@ export const App: React.FC = () => {
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3 py-24">
             <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
-            <p className="text-sm font-medium">Sincronizando listas de Google Tasks...</p>
+            <p className="text-sm font-medium">{t('board.syncingLists')}</p>
           </div>
         ) : (
           <div className="flex-1 flex flex-col">
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-                  Flujo Kanban en Vivo
+                  {t('board.title')}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Las 4 listas de Google Tasks sincronizadas bidireccionalmente con tu móvil.
+                  {t('board.subtitle')}
                 </p>
               </div>
 
@@ -104,7 +106,7 @@ export const App: React.FC = () => {
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Filtrar tareas..."
+                    placeholder={t('board.filterPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -127,10 +129,10 @@ export const App: React.FC = () => {
                     onClick={handleImportFromMyTasks}
                     disabled={isImporting}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
-                    title="Importar tareas y subtareas existentes de tu lista por defecto 'My Tasks' a la columna 'Para hacer'"
+                    title={t('board.importMyTasks')}
                   >
                     <Download className={`w-3.5 h-3.5 ${isImporting ? 'animate-bounce' : ''}`} />
-                    <span>{isImporting ? 'Importando...' : 'Importar de "My Tasks"'}</span>
+                    <span>{isImporting ? t('board.importing') : t('board.importMyTasks')}</span>
                   </button>
                 )}
 
@@ -138,13 +140,11 @@ export const App: React.FC = () => {
                   <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>
                     {searchQuery.trim() ? (
-                      <>
-                        <strong className="text-slate-800 dark:text-white">{searchMatchingCount}</strong> de {totalCount} tareas
-                      </>
+                      <Trans i18nKey="board.tasksMatching" values={{ matching: searchMatchingCount, total: totalCount }}>
+                        <strong className="text-slate-800 dark:text-white">{{matching}}</strong> de {{total}} tareas
+                      </Trans>
                     ) : (
-                      <>
-                        <strong className="text-slate-800 dark:text-white">{totalCount}</strong> tareas sincronizadas
-                      </>
+                      <>{t('board.tasksSynced', { count: totalCount })}</>
                     )}
                   </span>
                 </div>
@@ -155,13 +155,15 @@ export const App: React.FC = () => {
             {searchQuery.trim() && searchMatchingCount === 0 && (
               <div className="mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between text-xs animate-in fade-in">
                 <span>
-                  No se encontraron tareas ni subtareas que coincidan con "<strong>{searchQuery}</strong>".
+                  <Trans i18nKey="board.noMatchFound" values={{ query: searchQuery }}>
+                    No se encontraron tareas ni subtareas que coincidan con "<strong>{{query: searchQuery}}</strong>".
+                  </Trans>
                 </span>
                 <button
                   onClick={() => setSearchQuery('')}
                   className="font-semibold text-amber-800 underline hover:text-amber-950 cursor-pointer"
                 >
-                  Limpiar filtro
+                  {t('board.clearFilter')}
                 </button>
               </div>
             )}
