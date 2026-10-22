@@ -115,10 +115,18 @@ class GoogleTasksDirectService {
 
     // Renovar proactivamente 5 minutos antes de expirar
     const msUntilRefresh = Math.max(5000, this.tokenExpiresAt - Date.now() - 5 * 60 * 1000);
-    this.refreshTimer = setTimeout(() => {
-      this.refreshAccessTokenSilently().catch((err) => {
+    this.refreshTimer = setTimeout(async () => {
+      try {
+        await this.refreshAccessTokenSilently();
+      } catch (err) {
         console.warn('[GoogleTasks] Renovación proactiva silenciosa no disponible en segundo plano:', err);
-      });
+        // Si la renovación silenciosa falla en segundo plano, marcamos la sesión como pausada
+        // para que la UI le pida al usuario interactuar
+        if (this.tokenExpiresAt && Date.now() >= this.tokenExpiresAt) {
+          this.isSessionPaused = true;
+          this.onAuthStateChanged?.({ isConnected: true, isPaused: true });
+        }
+      }
     }, msUntilRefresh);
   }
 
@@ -174,7 +182,13 @@ class GoogleTasksDirectService {
 
     // Refrescar preventivamente si vence en menos de 1 minuto
     if (this.tokenExpiresAt && Date.now() >= this.tokenExpiresAt - 60000) {
-      await this.refreshAccessTokenSilently().catch(() => {});
+      try {
+        await this.refreshAccessTokenSilently();
+      } catch (err) {
+        console.warn('[GoogleTasks] Error en auto-refresco preventivo:', err);
+        // Falló silenciosamente, pero continuaremos e intentaremos la llamada.
+        // Si devuelve 401, lo manejaremos.
+      }
     }
 
     const exec = (token: string) => {
@@ -183,14 +197,22 @@ class GoogleTasksDirectService {
       return fetch(url.toString(), { ...init, headers });
     };
 
-    let res = await exec(this.accessToken || '');
+    // Usar this.accessToken que pudo haber sido actualizado por refreshAccessTokenSilently
+    let currentToken = this.accessToken || '';
+    if (!currentToken) {
+        this.handleTokenExpired();
+    }
+
+    let res = await exec(currentToken);
 
     // Si devolvió 401 (token expirado en servidor), intentar 1 auto-refresco y reintentar
     if (res.status === 401) {
       console.warn('[GoogleTasks] 401 detectado, intentando auto-renovación silenciosa...');
-      const newToken = await this.refreshAccessTokenSilently().catch(() => null);
-      if (newToken) {
-        res = await exec(newToken);
+      try {
+          const newToken = await this.refreshAccessTokenSilently();
+          res = await exec(newToken);
+      } catch (err) {
+          console.warn('[GoogleTasks] Error renovando ante 401:', err);
       }
     }
 

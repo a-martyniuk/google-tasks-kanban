@@ -314,12 +314,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`group relative bg-white rounded-lg px-3 py-2 mb-2 border transition-all duration-150 select-none ${
+          className={`group relative bg-white rounded-lg px-3 py-2 mb-2 border transition-all duration-200 select-none ${
             snapshot.isDragging
-              ? 'border-blue-500 shadow-xl ring-2 ring-blue-500/20 scale-[1.02] cursor-grabbing rotate-1'
+              ? 'border-blue-500 shadow-2xl ring-4 ring-blue-500/30 scale-105 cursor-grabbing rotate-2 opacity-95 z-50'
               : snapshot.combineTargetFor
               ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-400 ring-dashed'
-              : 'border-slate-200/80 shadow-xs hover:border-slate-300 hover:shadow-sm cursor-grab'
+              : 'border-slate-200/80 shadow-xs hover:border-slate-300 hover:shadow-md cursor-grab'
           }`}
         >
           {/* Indicador visual cuando otra tarjeta se arrastra sobre esta para anidar */}
