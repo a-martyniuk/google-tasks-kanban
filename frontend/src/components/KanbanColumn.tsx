@@ -29,32 +29,32 @@ const COLUMN_THEMES: Record<
   { dot: string; badge: string; border: string; headerBg: string; buttonHover: string }
 > = {
   todo: {
-    dot: 'bg-slate-400',
-    badge: 'bg-slate-100 text-slate-700',
+    dot: 'bg-slate-400 dark:bg-slate-500',
+    badge: 'bg-slate-200/70 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300',
     border: 'border-slate-200',
     headerBg: 'bg-slate-100/70',
-    buttonHover: 'hover:bg-slate-200/60 text-slate-600',
+    buttonHover: 'hover:bg-slate-200/60 dark:hover:bg-slate-700/50 text-slate-600 dark:text-slate-400',
   },
   in_progress: {
-    dot: 'bg-blue-500',
-    badge: 'bg-blue-50 text-blue-700',
+    dot: 'bg-blue-500 dark:bg-blue-400',
+    badge: 'bg-blue-100/70 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
     border: 'border-blue-200',
     headerBg: 'bg-blue-50/50',
-    buttonHover: 'hover:bg-blue-100/60 text-blue-600',
+    buttonHover: 'hover:bg-blue-200/50 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400',
   },
   review: {
-    dot: 'bg-purple-500',
-    badge: 'bg-purple-50 text-purple-700',
+    dot: 'bg-purple-500 dark:bg-purple-400',
+    badge: 'bg-purple-100/70 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
     border: 'border-purple-200',
     headerBg: 'bg-purple-50/50',
-    buttonHover: 'hover:bg-purple-100/60 text-purple-600',
+    buttonHover: 'hover:bg-purple-200/50 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400',
   },
   done: {
-    dot: 'bg-emerald-500',
-    badge: 'bg-emerald-50 text-emerald-700',
+    dot: 'bg-emerald-500 dark:bg-emerald-400',
+    badge: 'bg-emerald-100/70 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
     border: 'border-emerald-200',
     headerBg: 'bg-emerald-50/50',
-    buttonHover: 'hover:bg-emerald-100/60 text-emerald-600',
+    buttonHover: 'hover:bg-emerald-200/50 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400',
   },
 };
 
@@ -97,12 +97,12 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   };
 
   return (
-    <div className="flex flex-col bg-slate-100/80 rounded-2xl p-3 border border-slate-200/70 shadow-2xs h-full min-w-[280px] max-w-[340px] flex-1">
+    <div className="flex flex-col bg-slate-100/80 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200/70 dark:border-slate-700/70 shadow-2xs h-full min-w-[280px] max-w-[340px] flex-1">
       {/* Encabezado de Columna */}
       <div className="flex items-center justify-between px-2 py-2 mb-2">
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${theme.dot}`} />
-          <h3 className="font-semibold text-slate-800 text-sm tracking-tight">
+          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm tracking-tight">
             {column.title}
           </h3>
         </div>
@@ -136,8 +136,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 isDraggingSubtask
                   ? `mb-2 rounded-lg border-2 border-dashed px-3 py-2.5 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                       snapshot.isDraggingOver
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-slate-300 bg-white/60 text-slate-500'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                        : 'border-slate-300 dark:border-slate-600 bg-white/60 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400'
                     }`
                   : 'hidden'
               }
@@ -163,7 +163,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               setNewDueDate('');
             }
           }}
-          className="mb-3 bg-white p-3 rounded-xl border border-slate-300 shadow-xs space-y-2 animate-in fade-in"
+          className="mb-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-300 dark:border-slate-600 shadow-xs space-y-2 animate-in fade-in"
         >
           <input
             type="text"
@@ -171,7 +171,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900"
+            className="w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-900 dark:text-slate-100 bg-transparent"
           />
           <textarea
             placeholder="Notas u observaciones (opcional)..."
@@ -184,15 +184,15 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 handleCreate(e);
               }
             }}
-            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 resize-none"
+            className="w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 resize-none bg-transparent"
           />
           <div className="flex items-center justify-between text-xs pt-0.5">
-            <span className="text-[11px] text-slate-500 font-medium">Vencimiento:</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Vencimiento:</span>
             <input
               type="date"
               value={newDueDate}
               onChange={(e) => setNewDueDate(e.target.value)}
-              className="text-xs px-2 py-0.5 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
+              className="text-xs px-2 py-0.5 border border-slate-200 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 bg-transparent"
             />
           </div>
           <div className="flex items-center justify-end gap-1.5 pt-1">
@@ -204,14 +204,14 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 setNewNotes('');
                 setNewDueDate('');
               }}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !newTitle.trim()}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
               <Check className="w-3 h-3" />
               <span>{isSubmitting ? 'Guardando...' : 'Crear'}</span>
@@ -227,7 +227,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             ref={provided.innerRef}
             {...provided.droppableProps}
             className={`flex-1 rounded-xl p-1 transition-all duration-200 min-h-[350px] ${
-              snapshot.isDraggingOver ? 'bg-blue-50/60 ring-2 ring-blue-500/40 ring-dashed shadow-inner' : ''
+              snapshot.isDraggingOver ? 'bg-blue-50/60 dark:bg-blue-900/20 ring-2 ring-blue-500/40 dark:ring-blue-500/30 ring-dashed shadow-inner' : ''
             }`}
           >
             {column.items.map((item, index) => (
@@ -249,7 +249,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
             {provided.placeholder}
 
             {column.items.length === 0 && !snapshot.isDraggingOver && !isAdding && (
-              <div className="h-36 border-2 border-dashed border-slate-300 bg-slate-50/50 rounded-xl flex flex-col items-center justify-center text-xs text-slate-500 font-medium gap-2 p-4 text-center">
+              <div className="h-36 border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl flex flex-col items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-medium gap-2 p-4 text-center">
                 {column.id === 'todo' && <span>No hay tareas pendientes. ¡Todo al día!</span>}
                 {column.id === 'in_progress' && <span>Aún no hay nada en progreso.</span>}
                 {column.id === 'review' && <span>No hay tareas en revisión.</span>}
@@ -258,7 +258,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 {onAddTask && (
                   <button
                     onClick={() => setIsAdding(true)}
-                    className="mt-1 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 hover:text-slate-800 transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5"
+                    className="mt-1 px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-slate-800 dark:hover:text-white transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Añadir Tarea</span>
