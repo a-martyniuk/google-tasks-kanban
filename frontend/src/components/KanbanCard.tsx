@@ -543,13 +543,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                             {...subDragProvided.draggableProps}
                             className={`flex items-center justify-between gap-1.5 text-xs px-1 py-1 rounded transition-colors group/sub ${
                               subDragSnapshot.isDragging
-                                ? 'bg-white shadow-lg ring-1 ring-blue-500/50 rounded z-50'
-                                : 'hover:bg-slate-50'
+                                ? 'bg-white dark:bg-slate-700 shadow-lg ring-1 ring-blue-500/50 rounded z-50'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                             }`}
                           >
                             <span
                               {...subDragProvided.dragHandleProps}
-                              className="p-0.5 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0"
+                              className="p-0.5 text-slate-300 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 cursor-grab active:cursor-grabbing shrink-0"
                               title={t('card.dragToReorder')}
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -571,12 +571,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                                     if (e.key === 'Escape') handleCancelEditSubtask(e);
                                   }}
                                   disabled={isSavingSubtask}
-                                  className="flex-1 min-w-0 text-xs px-1.5 py-0.5 border border-blue-400 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+                                  className="flex-1 min-w-0 text-xs px-1.5 py-0.5 border border-blue-400 dark:border-blue-500 rounded bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
                                 />
                                 <button
                                   type="submit"
                                   disabled={isSavingSubtask || !editSubtaskTitle.trim()}
-                                  className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer disabled:opacity-50 shrink-0"
+                                  className="p-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded cursor-pointer disabled:opacity-50 shrink-0"
                                   title={t('card.saveChanges')}
                                 >
                                   <Check className="w-3 h-3" />
@@ -585,7 +585,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                                   type="button"
                                   onClick={(e) => handleCancelEditSubtask(e)}
                                   disabled={isSavingSubtask}
-                                  className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer shrink-0"
+                                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer shrink-0"
                                   title={t('card.cancel')}
                                 >
                                   <X className="w-3 h-3" />
@@ -611,13 +611,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                                     type="checkbox"
                                     checked={isDone}
                                     onChange={() => {}}
-                                    className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0"
+                                    className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 cursor-pointer pointer-events-none shrink-0 bg-white dark:bg-slate-800"
                                   />
                                   <span
                                     className={`leading-snug transition-all break-words ${
                                       isDone
-                                        ? 'line-through text-slate-400'
-                                        : 'text-slate-700 group-hover/sub:text-slate-900'
+                                        ? 'line-through text-slate-400 dark:text-slate-500'
+                                        : 'text-slate-700 dark:text-slate-200 group-hover/sub:text-slate-900 dark:group-hover/sub:text-white'
                                     }`}
                                     title={onUpdateSubtask ? t('card.doubleClickEdit') : undefined}
                                   >
@@ -630,7 +630,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                                     <button
                                       type="button"
                                       onClick={(e) => handleStartEditSubtask(sub, e)}
-                                      className="p-0.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                      className="p-0.5 text-slate-300 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors cursor-pointer"
                                       title={t('card.editSubtask')}
                                     >
                                       <Pencil className="w-3 h-3" />
@@ -646,7 +646,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                                           onDeleteSubtask(item, sub);
                                         }
                                       }}
-                                      className="p-0.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                      className="p-0.5 text-slate-300 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded transition-colors cursor-pointer"
                                       title={t('card.deleteSubtask')}
                                     >
                                       <Trash2 className="w-3 h-3" />
