@@ -141,7 +141,7 @@ export const App: React.FC = () => {
                   <span>
                     {searchQuery.trim() ? (
                       <Trans i18nKey="board.tasksMatching" values={{ matching: searchMatchingCount, total: totalCount }}>
-                        <strong className="text-slate-800 dark:text-white">{{matching}}</strong> de {{total}} tareas
+                        <strong className="text-slate-800 dark:text-white">{'{{matching}}'}</strong> of {'{{total}}'} tasks
                       </Trans>
                     ) : (
                       <>{t('board.tasksSynced', { count: totalCount })}</>
@@ -156,7 +156,7 @@ export const App: React.FC = () => {
               <div className="mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between text-xs animate-in fade-in">
                 <span>
                   <Trans i18nKey="board.noMatchFound" values={{ query: searchQuery }}>
-                    No se encontraron tareas ni subtareas que coincidan con "<strong>{{query: searchQuery}}</strong>".
+                    No tasks found matching "<strong>{'{{query}}'}</strong>".
                   </Trans>
                 </span>
                 <button
